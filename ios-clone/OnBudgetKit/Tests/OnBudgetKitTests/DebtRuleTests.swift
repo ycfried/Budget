@@ -74,12 +74,13 @@ final class DebtRuleTests: XCTestCase {
         let rows = weekResult(baseAvailable: 30000, debt: 348546, debtPayment: 10000, charges: 5000, available: 25000)
             .sheetRows(baseAllowanceCents: 40000)
         XCTAssertEqual(rows.map(\.label),
-                       ["Base Allowance", "Debt Payment", "Spent", "Balance", "Debt Remaining"])
-        XCTAssertEqual(rows[1].cents, 10000)
-        XCTAssertTrue(rows[1].isDeduction)
-        XCTAssertEqual(rows[3].cents, 25000)
-        XCTAssertEqual(rows[4].cents, 338546)
-        XCTAssertFalse(rows[4].isDeduction)
+                       ["Allowance", "Base Allowance", "Debt Payment", "Spent", "Balance", "Debt Remaining"])
+        XCTAssertEqual(rows[0].cents, 30000)
+        XCTAssertEqual(rows[2].cents, 10000)
+        XCTAssertTrue(rows[2].isDeduction)
+        XCTAssertEqual(rows[4].cents, 25000)
+        XCTAssertEqual(rows[5].cents, 338546)
+        XCTAssertFalse(rows[5].isDeduction)
     }
 
     func testWeekSheetRowsRuleOffShowsRemainingWithoutPayment() {
@@ -88,8 +89,9 @@ final class DebtRuleTests: XCTestCase {
         let rows = weekResult(baseAvailable: 40000, debt: 348546, debtPayment: 0, charges: 0, available: 40000)
             .sheetRows(baseAllowanceCents: 40000)
         XCTAssertEqual(rows.map(\.label),
-                       ["Base Allowance", "Spent", "Balance", "Debt Remaining"])
-        XCTAssertEqual(rows[3].cents, 348546)
+                       ["Allowance", "Base Allowance", "Spent", "Balance", "Debt Remaining"])
+        XCTAssertEqual(rows[0].cents, 40000)
+        XCTAssertEqual(rows[4].cents, 348546)
     }
 
     func testWeekSheetRowsOldServerKeepsCarriedDebt() {
@@ -97,15 +99,16 @@ final class DebtRuleTests: XCTestCase {
         let rows = weekResult(baseAvailable: 0, debt: 34810, charges: 12169, available: -9479)
             .sheetRows(baseAllowanceCents: 37500)
         XCTAssertEqual(rows.map(\.label),
-                       ["Base Allowance", "Carried Debt", "Spent", "Balance"])
-        XCTAssertEqual(rows[1].cents, 34810)
-        XCTAssertTrue(rows[1].isDeduction)
+                       ["Allowance", "Base Allowance", "Carried Debt", "Spent", "Balance"])
+        XCTAssertEqual(rows[0].cents, 2690)
+        XCTAssertEqual(rows[2].cents, 34810)
+        XCTAssertTrue(rows[2].isDeduction)
     }
 
     func testWeekSheetRowsNoDebtShowsNoDebtRows() {
         let rows = weekResult(baseAvailable: 40000, debt: 0, debtPayment: 0, charges: 0, available: 40000)
             .sheetRows(baseAllowanceCents: 40000)
-        XCTAssertEqual(rows.map(\.label), ["Spent", "Balance"])
+        XCTAssertEqual(rows.map(\.label), ["Allowance", "Spent", "Balance"])
     }
 
     // MARK: - Home math line
@@ -156,7 +159,7 @@ final class DebtRuleTests: XCTestCase {
         """)
         XCTAssertNil(week.debtPaymentCents)
         XCTAssertEqual(week.sheetRows(baseAllowanceCents: 37500).map(\.label),
-                       ["Base Allowance", "Carried Debt", "Spent", "Balance"])
+                       ["Allowance", "Base Allowance", "Carried Debt", "Spent", "Balance"])
     }
 
     func testDebtRuleDecodes() throws {

@@ -132,7 +132,7 @@ final class APIDecodingTests: XCTestCase {
         """)
         XCTAssertNil(week.overrideCents)
         XCTAssertEqual(week.sheetRows(baseAllowanceCents: 37500).map(\.label),
-                       ["Spent", "Balance"])
+                       ["Allowance", "Spent", "Balance"])
     }
 
     private func weekResult(
@@ -148,10 +148,15 @@ final class APIDecodingTests: XCTestCase {
         )
     }
 
-    func testWeekSheetRowsNormalWeekIsTwoRows() throws {
+    // Owner, Nov 25, 2026: the Allowance row is back as the
+    // FIRST line — the week's original total (available +
+    // charges) — so a normal week reads Allowance / Spent /
+    // Balance.
+    func testWeekSheetRowsNormalWeekIsThreeRows() throws {
         let rows = weekResult(baseAvailable: 37500, charges: 1059, available: 36441)
             .sheetRows(baseAllowanceCents: 37500)
         XCTAssertEqual(rows, [
+            WeekSheetRow(label: "Allowance", cents: 37500),
             WeekSheetRow(label: "Spent", cents: 1059),
             WeekSheetRow(label: "Balance", cents: 36441),
         ])
@@ -163,10 +168,11 @@ final class APIDecodingTests: XCTestCase {
         let rows = weekResult(baseAvailable: 47500, override: 47500, available: 47500)
             .sheetRows(baseAllowanceCents: 37500)
         XCTAssertEqual(rows.map(\.label),
-                       ["Base Allowance", "Temporary Increases", "Spent", "Balance"])
-        XCTAssertEqual(rows[0].cents, 37500)
-        XCTAssertEqual(rows[1].cents, 10000)
-        XCTAssertEqual(rows[3].cents, 47500)
+                       ["Allowance", "Base Allowance", "Temporary Increases", "Spent", "Balance"])
+        XCTAssertEqual(rows[0].cents, 47500)
+        XCTAssertEqual(rows[1].cents, 37500)
+        XCTAssertEqual(rows[2].cents, 10000)
+        XCTAssertEqual(rows[4].cents, 47500)
     }
 
     func testWeekSheetRowsOverrideDecrease() throws {
@@ -174,17 +180,19 @@ final class APIDecodingTests: XCTestCase {
         let rows = weekResult(baseAvailable: 27500, override: 27500, available: 27500)
             .sheetRows(baseAllowanceCents: 37500)
         XCTAssertEqual(rows.map(\.label),
-                       ["Base Allowance", "Temporary Decrease", "Spent", "Balance"])
-        XCTAssertEqual(rows[1].cents, 10000)
+                       ["Allowance", "Base Allowance", "Temporary Decrease", "Spent", "Balance"])
+        XCTAssertEqual(rows[0].cents, 27500)
+        XCTAssertEqual(rows[2].cents, 10000)
     }
 
     func testWeekSheetRowsCarriedDebt() throws {
         let rows = weekResult(baseAvailable: 0, debt: 34810, charges: 12169, available: -9479)
             .sheetRows(baseAllowanceCents: 37500)
         XCTAssertEqual(rows.map(\.label),
-                       ["Base Allowance", "Carried Debt", "Spent", "Balance"])
-        XCTAssertEqual(rows[1].cents, 34810)
-        XCTAssertEqual(rows[3].cents, -9479)
+                       ["Allowance", "Base Allowance", "Carried Debt", "Spent", "Balance"])
+        XCTAssertEqual(rows[0].cents, 2690)
+        XCTAssertEqual(rows[2].cents, 34810)
+        XCTAssertEqual(rows[4].cents, -9479)
     }
 
     func testWeekSheetRowsLegacyTempIncrease() throws {
@@ -193,8 +201,9 @@ final class APIDecodingTests: XCTestCase {
         let rows = weekResult(baseAvailable: 37500, temp: 5000, available: 42500)
             .sheetRows(baseAllowanceCents: 37500)
         XCTAssertEqual(rows.map(\.label),
-                       ["Base Allowance", "Temporary Increases", "Spent", "Balance"])
-        XCTAssertEqual(rows[1].cents, 5000)
+                       ["Allowance", "Base Allowance", "Temporary Increases", "Spent", "Balance"])
+        XCTAssertEqual(rows[0].cents, 42500)
+        XCTAssertEqual(rows[2].cents, 5000)
     }
 
     func testWeekSheetRowsLockedWeekIgnoresOverride() throws {
@@ -202,7 +211,7 @@ final class APIDecodingTests: XCTestCase {
         // re-explained from a later override.
         let rows = weekResult(baseAvailable: 37500, override: 47500, available: 37500, locked: true)
             .sheetRows(baseAllowanceCents: 37500)
-        XCTAssertEqual(rows.map(\.label), ["Spent", "Balance"])
+        XCTAssertEqual(rows.map(\.label), ["Allowance", "Spent", "Balance"])
     }
 
     func testWeekSheetRowsWithoutBaseShowsNoBaseRow() throws {
@@ -210,7 +219,7 @@ final class APIDecodingTests: XCTestCase {
         // no override line, exactly as the web.
         let rows = weekResult(baseAvailable: 47500, override: 47500, available: 47500)
             .sheetRows(baseAllowanceCents: nil)
-        XCTAssertEqual(rows.map(\.label), ["Spent", "Balance"])
+        XCTAssertEqual(rows.map(\.label), ["Allowance", "Spent", "Balance"])
     }
 
     // MARK: - Display-name resolution (phone feedback, Nov 11, 2026)
