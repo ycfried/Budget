@@ -377,6 +377,11 @@ public struct DollarTextField: View {
                 .font(.system(size: 17))
                 .foregroundStyle(DesignTokens.ink)
             TextField(placeholder, text: $text)
+                // Dark Mode (owner's father, Nov 26, 2026): the
+                // field background is hardcoded white, so the typed
+                // text must be explicit ink — the system default is
+                // white in Dark Mode and invisible on white.
+                .foregroundStyle(DesignTokens.ink)
                 .keyboardType(.decimalPad)
                 .focused($isFocused)
         }

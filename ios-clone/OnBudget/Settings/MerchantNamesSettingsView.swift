@@ -1036,6 +1036,7 @@ struct MerchantNamesSettingsView: View {
             VStack(alignment: .leading, spacing: 6) {
                 FieldLabel("Pattern", required: true)
                 TextField("", text: $editablePatternText)
+                    .foregroundStyle(DesignTokens.ink)
                     // Build 68 (item 7/13): 48pt field, 14pt
                     // horizontal padding, 12pt radius.
                     .padding(.horizontal, 14)
@@ -1047,6 +1048,7 @@ struct MerchantNamesSettingsView: View {
             VStack(alignment: .leading, spacing: 6) {
                 FieldLabel("Show As", required: true)
                 TextField("", text: $displayNameText)
+                    .foregroundStyle(DesignTokens.ink)
                     // Build 68 (item 7/13): 48pt field, 14pt
                     // horizontal padding, 12pt radius.
                     .padding(.horizontal, 14)

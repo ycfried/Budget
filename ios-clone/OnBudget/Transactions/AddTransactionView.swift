@@ -365,6 +365,7 @@ private struct CardAccountField: View {
             if showingAddCustom {
                 VStack(alignment: .leading, spacing: 8) {
                     TextField("Last 4 digits", text: $customText)
+                        .foregroundStyle(DesignTokens.ink)
                         .keyboardType(.numberPad)
                         .padding(.horizontal, 14)
                         .frame(maxWidth: 220, minHeight: 48, alignment: .leading)
@@ -454,6 +455,7 @@ public struct AddPurchaseForm: View {
 
                 FormField("Merchant", required: true) {
                     TextField("Merchant", text: $merchant)
+                        .foregroundStyle(DesignTokens.ink)
                         .padding(.horizontal, 14)
                         .frame(minHeight: 48, alignment: .leading)
                         .background(.white)
@@ -638,6 +640,7 @@ public struct AddDonationForm: View {
 
                 FormField("Organization", required: true) {
                     TextField("Organization", text: $organization)
+                        .foregroundStyle(DesignTokens.ink)
                         .padding(.horizontal, 14)
                         .frame(minHeight: 48, alignment: .leading)
                         .background(.white)
@@ -671,6 +674,7 @@ public struct AddDonationForm: View {
 
                 FormField("Note") {
                     TextField("Note", text: $note, axis: .vertical)
+                        .foregroundStyle(DesignTokens.ink)
                         .padding(.horizontal, 14)
                         .frame(minHeight: 48, alignment: .leading)
                         .background(.white)

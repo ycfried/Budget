@@ -232,6 +232,11 @@ public struct HouseholdView: View {
                 .frame(maxWidth: .infinity, alignment: .center)
             FieldLabel("Invite Code", required: true, weight: .bold)
             TextField("Invite Code from the Owner", text: $joinCode)
+                // Dark Mode (owner's father, Nov 26, 2026): the
+                // field background is hardcoded white, so the typed
+                // text must be explicit ink — the system default is
+                // white in Dark Mode and invisible on white.
+                .foregroundStyle(DesignTokens.ink)
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
                 .accessibilityIdentifier("household.inviteCode")
@@ -405,6 +410,11 @@ public struct HouseholdNamePanel: View {
                 .foregroundStyle(DesignTokens.ink)
             FieldLabel("Household Name", required: true, weight: .bold)
             TextField("Household", text: $householdName)
+                // Dark Mode (owner's father, Nov 26, 2026): the
+                // field background is hardcoded white, so the typed
+                // text must be explicit ink — the system default is
+                // white in Dark Mode and invisible on white.
+                .foregroundStyle(DesignTokens.ink)
                 .accessibilityIdentifier("household.nameField")
                 .onChange(of: householdName) { _, newValue in
                     if newValue.count > 80 { householdName = String(newValue.prefix(80)) }

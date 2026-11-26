@@ -612,6 +612,11 @@ public struct FundsTextField: View {
 
     public var body: some View {
         TextField(placeholder, text: $text, axis: axis)
+            // Dark Mode (owner's father, Nov 26, 2026): the field
+            // background is hardcoded white, so the typed text must
+            // be explicit ink — the system default is white in Dark
+            // Mode and invisible on white.
+            .foregroundStyle(DesignTokens.ink)
             .font(.system(size: 17))
             .padding(.horizontal, 14)
             .padding(.vertical, 12)

@@ -694,6 +694,7 @@ public struct FundRequestQueue: View {
             primaryTitle: "Approve Anyway",
             extra: AnyView(
                 TextField("Reason for overriding", text: $overrideReason)
+                    .foregroundStyle(DesignTokens.ink)
                     .padding(.horizontal, 14)
                     .frame(height: 48, alignment: .leading)
                     .background(.white)

@@ -477,6 +477,11 @@ struct ProfileSettingsView: View {
                         SecureField("New password", text: $viewModel.newPassword)
                     }
                 }
+                // Dark Mode (owner's father, Nov 26, 2026): the
+                // field background is hardcoded white, so the typed
+                // text must be explicit ink — the system default is
+                // white in Dark Mode and invisible on white.
+                .foregroundStyle(DesignTokens.ink)
                 Button(viewModel.showNewPassword ? "Hide" : "Show") {
                     viewModel.showNewPassword.toggle()
                 }

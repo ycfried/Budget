@@ -224,6 +224,11 @@ public struct AuthView: View {
         VStack(alignment: .leading, spacing: 12) {
             FieldLabel("Email", required: true, weight: .bold)
             TextField("Email", text: $email)
+                // Dark Mode (owner's father, Nov 26, 2026): the
+                // field background is hardcoded white, so the typed
+                // text must be explicit ink — the system default is
+                // white in Dark Mode and invisible on white.
+                .foregroundStyle(DesignTokens.ink)
                 // Password AutoFill (owner, Nov 11, 2026): the email
                 // field is the username field, so iOS offers to save
                 // the login to the passwords app on sign-in and offers
@@ -255,6 +260,11 @@ public struct AuthView: View {
                             .accessibilityIdentifier("auth.password")
                     }
                 }
+                // Dark Mode (owner's father, Nov 26, 2026): the
+                // field background is hardcoded white, so the typed
+                // text must be explicit ink — the system default is
+                // white in Dark Mode and invisible on white.
+                .foregroundStyle(DesignTokens.ink)
                 .textContentType(.password)
                 // Eye icon, not "Show"/"Hide" text (owner, Nov 12,
                 // 2026). The 12pt spacing keeps it clear of the
@@ -575,6 +585,12 @@ public struct NameStepView: View {
                     .foregroundStyle(DesignTokens.ink)
                 FieldLabel("First Name", required: true, weight: .bold)
                 TextField("First Name", text: $firstName)
+                    // Dark Mode (owner's father, Nov 26, 2026):
+                    // the field background is hardcoded white, so
+                    // the typed text must be explicit ink — the
+                    // system default is white in Dark Mode and
+                    // invisible on white.
+                    .foregroundStyle(DesignTokens.ink)
                     .textContentType(.givenName)
                     .textInputAutocapitalization(.words)
                     .accessibilityIdentifier("auth.firstName")
@@ -586,6 +602,12 @@ public struct NameStepView: View {
                     .onChange(of: firstName) { message = nil }
                 FieldLabel("Last Name", required: true, weight: .bold)
                 TextField("Last Name", text: $lastName)
+                    // Dark Mode (owner's father, Nov 26, 2026):
+                    // the field background is hardcoded white, so
+                    // the typed text must be explicit ink — the
+                    // system default is white in Dark Mode and
+                    // invisible on white.
+                    .foregroundStyle(DesignTokens.ink)
                     .textContentType(.familyName)
                     .textInputAutocapitalization(.words)
                     .accessibilityIdentifier("auth.lastName")
@@ -743,6 +765,12 @@ public struct ForgotPasswordSheet: View {
                     .foregroundStyle(DesignTokens.muted)
                 FieldLabel("Email", required: true, weight: .bold)
                 TextField("Email", text: $email)
+                    // Dark Mode (owner's father, Nov 26, 2026):
+                    // the field background is hardcoded white, so
+                    // the typed text must be explicit ink — the
+                    // system default is white in Dark Mode and
+                    // invisible on white.
+                    .foregroundStyle(DesignTokens.ink)
                     .textContentType(.emailAddress)
                     .keyboardType(.emailAddress)
                     .textInputAutocapitalization(.never)
@@ -951,6 +979,11 @@ public struct ResetPasswordView: View {
                         SecureField(label, text: text)
                     }
                 }
+                // Dark Mode (owner's father, Nov 26, 2026): the
+                // field background is hardcoded white, so the typed
+                // text must be explicit ink — the system default is
+                // white in Dark Mode and invisible on white.
+                .foregroundStyle(DesignTokens.ink)
                 .textContentType(.newPassword)
                 // Eye icon, not "Show"/"Hide" text (audit A-P2-4):
                 // the reset fields match the sign-in field. 44pt hit

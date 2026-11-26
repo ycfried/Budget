@@ -1300,6 +1300,7 @@ public struct TransactionsFilterSheet: View {
                             .font(.system(size: 17))
                             .foregroundStyle(DesignTokens.ink)
                         TextField("0.00", text: $minText)
+                            .foregroundStyle(DesignTokens.ink)
                             .keyboardType(.decimalPad)
                             .focused($focusedField, equals: .min)
                     }
@@ -1321,6 +1322,7 @@ public struct TransactionsFilterSheet: View {
                             .font(.system(size: 17))
                             .foregroundStyle(DesignTokens.ink)
                         TextField("0.00", text: $maxText)
+                            .foregroundStyle(DesignTokens.ink)
                             .keyboardType(.decimalPad)
                             .focused($focusedField, equals: .max)
                     }

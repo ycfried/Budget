@@ -1261,6 +1261,7 @@ public struct TransactionActionsSheet: View {
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundStyle(DesignTokens.ink)
                 TextField("", text: $renameName)
+                    .foregroundStyle(DesignTokens.ink)
                     // Build 68 (item 7/13): 48pt field, 14pt
                     // horizontal padding, 12pt radius — same height
                     // as every other field in this sheet.
@@ -1291,6 +1292,7 @@ public struct TransactionActionsSheet: View {
                         .font(.system(size: 14, weight: .semibold))
                         .foregroundStyle(DesignTokens.ink)
                     TextField("", text: $renameMatchWords)
+                        .foregroundStyle(DesignTokens.ink)
                         .padding(.horizontal, 14)
                         .frame(minHeight: 48, alignment: .leading)
                         .background(.white)
@@ -1501,6 +1503,7 @@ public struct TransactionActionsSheet: View {
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundStyle(DesignTokens.ink)
                 TextField("Reason", text: $excludeReason, axis: .vertical)
+                    .foregroundStyle(DesignTokens.ink)
                     // Build 68 (item 7/13): 48pt minimum height,
                         // 14pt horizontal / 12pt vertical padding,
                         // 12pt radius — matches the other fields.
@@ -1556,6 +1559,7 @@ public struct TransactionActionsSheet: View {
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundStyle(DesignTokens.ink)
                 TextField("Reason", text: $reclassifyReason, axis: .vertical)
+                    .foregroundStyle(DesignTokens.ink)
                     // Build 68 (item 7/13): 48pt minimum height,
                         // 14pt horizontal / 12pt vertical padding,
                         // 12pt radius — matches the other fields.
@@ -1643,6 +1647,7 @@ public struct TransactionActionsSheet: View {
                         .font(.system(size: 14, weight: .semibold))
                         .foregroundStyle(DesignTokens.ink)
                     TextField("Reason", text: $deleteReason, axis: .vertical)
+                        .foregroundStyle(DesignTokens.ink)
                         // Build 68 (item 7/13): 48pt minimum height,
                         // 14pt horizontal / 12pt vertical padding,
                         // 12pt radius — matches the other fields.

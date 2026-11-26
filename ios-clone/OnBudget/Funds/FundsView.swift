@@ -3472,6 +3472,7 @@ public struct WeeklyBudgetCalculatorContent: View {
                         .font(.system(size: 17, weight: .semibold))
                         .foregroundStyle(DesignTokens.ink)
                     TextField("", text: customCharityPercentBinding)
+                        .foregroundStyle(DesignTokens.ink)
                         .keyboardType(.decimalPad)
                         .font(.system(size: 17))
                         .focused($isCustomCharityPercentFocused)
@@ -3543,6 +3544,7 @@ public struct WeeklyBudgetCalculatorContent: View {
                         .font(.system(size: 17, weight: .semibold))
                         .foregroundStyle(DesignTokens.ink)
                     TextField("", text: $customHoldbackText)
+                        .foregroundStyle(DesignTokens.ink)
                         .keyboardType(.decimalPad)
                         .font(.system(size: 17))
                 }

@@ -219,6 +219,10 @@ public struct CharityRateSection: View {
                         .font(.system(size: 17, weight: .semibold))
                         .foregroundStyle(DesignTokens.ink)
                     TextField(MoneyFormat.formatRateBp(defaultRateBp), text: $rateText)
+                        // Dark Mode (owner's father, Nov 26, 2026):
+                        // the field background is hardcoded white,
+                        // so the typed text must be explicit ink.
+                        .foregroundStyle(DesignTokens.ink)
                         .keyboardType(.decimalPad)
                         .font(.system(size: 17))
                 }
@@ -516,6 +520,7 @@ public struct DebtRuleSection: View {
                         .font(.system(size: 17, weight: .semibold))
                         .foregroundStyle(DesignTokens.ink)
                     TextField(MoneyFormat.formatRateBp(savedRule.percentBp), text: $percentText)
+                        .foregroundStyle(DesignTokens.ink)
                         .keyboardType(.decimalPad)
                         .font(.system(size: 17))
                 }
