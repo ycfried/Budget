@@ -496,9 +496,9 @@ function fundDef(id) {
       + '<div class="drow"><span>Total</span><b>' + money(state.allowance) + '</b></div>'
       + '<div class="drow"><span>Spent so far</span><b>' + money(spent) + '</b></div>'
       + '<div class="drow"><span>Available</span><b>' + money(state.allowance - spent) + '</b></div>'
-      + '<div class="fbtns"><button class="outline" data-demo="Adjust This Week\'s Budget" type="button">Adjust This Week\'s Budget</button>'
+      + '<div class="fbtns"><button class="outline" data-demo="Adjust This Week\'s Allowance" type="button">Adjust This Week\'s Allowance</button>'
       + '<button class="outline" data-demo="Recurring Expenses" type="button">Recurring Expenses</button>'
-      + '<button class="outline" data-demo="Weekly Budget Calculator" type="button">Weekly Budget Calculator</button></div>' };
+      + '<button class="outline" data-demo="Weekly Allowance Calculator" type="button">Weekly Allowance Calculator</button></div>' };
   if (id === "savings") return { name: "Savings", glyph: '<span style="background:#6b7280">' + banknoteSvg() + '</span>', amount: money(state.savings.balance), color: "#6b7280",
     detail: '<div class="drow"><span>Balance</span><b>' + money(state.savings.balance) + '</b></div>'
       + '<div class="drow"><span>Transferred In</span><b>' + money(state.savings.transferredIn) + '</b></div>'
