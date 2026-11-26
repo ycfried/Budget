@@ -704,6 +704,7 @@ public struct TransactionsView: View {
         }
     }
 
+    @ViewBuilder
     private var countLine: some View {
         // Build 99 (loading audit, owner Nov 26, 2026): while the
         // list (or the Review count it reveals with) is still
