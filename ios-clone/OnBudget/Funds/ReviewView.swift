@@ -56,10 +56,12 @@ public struct ReviewView: View {
             if allClear {
                 allClearCard
             } else {
-                restorationsSection
+                // Owner, Nov 25, 2026: Possible Duplicates first,
+                // then Resolved, Refund Links, Restorations last.
                 duplicatesSection
                 resolvedSection
                 refundLinksSection
+                restorationsSection
             }
         }
     }
@@ -143,7 +145,7 @@ public struct ReviewView: View {
         }
     }
 
-    // MARK: 1 — Restorations & Held Refunds
+    // MARK: 4 — Restorations & Held Refunds
 
     /// A written-off held refund is not "Resolved": it was closed
     /// with no money moved and no release (F-P2-7).
@@ -201,7 +203,7 @@ public struct ReviewView: View {
         }
     }
 
-    // MARK: 2 — Possible Duplicates
+    // MARK: 1 — Possible Duplicates
 
     private var duplicatesSection: some View {
         ReviewSectionCard(
@@ -255,7 +257,7 @@ public struct ReviewView: View {
         return "Kept separate\(datePart)."
     }
 
-    // MARK: 3 — Resolved Duplicates
+    // MARK: 2 — Resolved Duplicates
 
     private var resolvedSection: some View {
         // Collapsed behind its count by default (build 52): the
@@ -286,6 +288,15 @@ public struct ReviewView: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+            // Owner, Nov 25, 2026: Resolved was the only Review
+            // section without a subtitle — add one, visible while
+            // collapsed (the default), in the same FundsMuted
+            // style as the other sections' subtitles.
+            if !resolvedExpanded {
+                FundsMuted(viewModel.resolvedDuplicates.isEmpty
+                    ? "No duplicates resolved yet."
+                    : "Tap to see the ones you've already decided.")
+            }
             if resolvedExpanded {
                 if let error = viewModel.resolvedError {
                     FundsErrorBox(error)
@@ -329,7 +340,7 @@ public struct ReviewView: View {
         )
     }
 
-    // MARK: 4 — Refund Links
+    // MARK: 3 — Refund Links
 
     private var refundLinksSection: some View {
         ReviewSectionCard(
@@ -634,11 +645,13 @@ public struct DuplicatePairCard: View {
                     isPresented: $showSamePurchaseConfirm,
                     title: "Same Purchase",
                     // Build 68: a charity pair merges two reports
-                    // of ONE gift — the message says so, instead of
-                    // the generic purchase wording.
+                    // of ONE gift — the message uses the gift wording,
+                    // not the generic purchase wording. Shortened
+                    // Nov 25 (owner): two short sentences; the button
+                    // and the side-by-side rows already say the rest.
                     message: isCharityPair
-                        ? "Keep one gift and exclude the other from counts? Both rows are the same gift reported twice. Neither row is deleted."
-                        : "Keep one transaction and exclude the other from counts? Neither row is deleted.",
+                        ? "One gift stays counted, the other is excluded. Nothing is deleted."
+                        : "One stays counted, the other is excluded. Nothing is deleted.",
                     primaryTitle: "Same Purchase",
                     onPrimary: { onSamePurchase(rememberAlias) }
                 )

@@ -1178,10 +1178,13 @@ public struct FundsView: View {
     // the drag handle did not grab and drag easily).
     @ViewBuilder
     private func fundContainer(for id: FundSectionID) -> some View {
+        // Owner, Nov 25, 2026: reorder is drag-only now — the
+        // up/down arrows (build 34 fallback) are gone, and so are
+        // moveFund / reorderArrows / reorderArrowButton (they had
+        // no other caller). The drag grip in the card header
+        // (FundsExpandableCard) is the only reorder affordance.
+        // The drag itself (.onDrag/.onDrop below) is unchanged.
         VStack(alignment: .leading, spacing: 12) {
-            if isRearranging {
-                reorderArrows(for: id)
-            }
             switch id {
             case .spending:
                 spendingCard
@@ -1230,56 +1233,6 @@ public struct FundsView: View {
                     targetId: id
                 ))
         }
-    }
-
-    /// Move a fund one step in the reorder list (build 34): the
-    /// order saves via the `fundOrder` onChange. The move itself
-    /// keeps a short ease — it is a reorder, not an expand/collapse
-    /// (those are instant since build 34, owner decision Nov 15).
-    private func moveFund(_ id: FundSectionID, by offset: Int) {
-        guard let from = fundOrder.firstIndex(of: id),
-              fundOrder.indices.contains(from + offset) else { return }
-        withAnimation(.easeInOut(duration: 0.25)) {
-            fundOrder.swapAt(from, from + offset)
-        }
-    }
-
-    /// The up/down arrows shown above a fund's card in reorder mode
-    /// (build 34 — they replace the drag handle, which did not grab
-    /// and drag easily). Tapping an arrow moves the fund one step.
-    /// An arrow that cannot move the fund any further is not shown
-    /// at all — no greyed-out buttons, only buttons that work
-    /// (owner rule, Nov 13, 2026).
-    private func reorderArrows(for id: FundSectionID) -> some View {
-        HStack(spacing: 8) {
-            Spacer()
-            if let index = fundOrder.firstIndex(of: id) {
-                if index > fundOrder.startIndex {
-                    reorderArrowButton(systemName: "chevron.up", label: "Move \(id.displayName(customNames: appState.fundNames)) up") {
-                        moveFund(id, by: -1)
-                    }
-                }
-                if index < fundOrder.index(before: fundOrder.endIndex) {
-                    reorderArrowButton(systemName: "chevron.down", label: "Move \(id.displayName(customNames: appState.fundNames)) down") {
-                        moveFund(id, by: 1)
-                    }
-                }
-            }
-        }
-    }
-
-    /// One reorder arrow: a clearly tappable 44pt button, light
-    /// grey fill like the tertiary treatment, ink chevron.
-    private func reorderArrowButton(systemName: String, label: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Image(systemName: systemName)
-                .font(.system(size: 17, weight: .semibold))
-                .foregroundStyle(DesignTokens.ink)
-                .frame(width: 44, height: 44)
-                .background(Color(hex: "#e5e7eb"))
-                .clipShape(RoundedRectangle(cornerRadius: 10))
-        }
-        .accessibilityLabel(label)
     }
 
     private func toggleCard(_ card: ExpandedCard) {

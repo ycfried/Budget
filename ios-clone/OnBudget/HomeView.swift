@@ -2957,7 +2957,10 @@ private struct HomeCardSkeletonBody: View {
                     .font(.system(size: 15, weight: .semibold))
                     .foregroundStyle(display.color)
             }
-            .padding(.vertical, 6)
+            // Owner, Nov 25, 2026: rows were 22pt apart (10pt stack
+            // gap + 6pt padding top and bottom) — too airy. 2pt
+            // padding puts them ~14pt apart.
+            .padding(.vertical, 2)
             // The whole row is the tap target (owner, Nov 25, 2026):
             // without this only the icon, name and amount register
             // taps — the empty space the Spacer opens up does not.

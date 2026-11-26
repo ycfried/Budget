@@ -1048,16 +1048,18 @@ public struct FundsExpandableCard<Expanded: View>: View {
     /// default icon.
     public let iconName: String?
     /// Reorder mode (build 41 — owner, Nov 16, 2026): when true
-    /// the card collapses to JUST the color bar — the header strip
-    /// only (icon + name; the amount lives in the body since
-    /// build 50 and is hidden here), no white body, no detail, no
-    /// progress bar, no buttons, no expanded content — so the
-    /// cards are compact and easy to move. The chevron and pencil
+    /// the card shows ONLY the header strip + the amount (icon +
+    /// name + amount; the amount stays visible since Nov 25, 2026
+    /// (owner) — so the card still reads as a fund card while
+    /// reordering, not a thin strip), no detail, no progress bar,
+    /// no buttons, no expanded content. The chevron and pencil
     /// hide too (the card does not expand or rename while
-    /// reordering); the arrows above the card still move it.
-    /// False everywhere else; exiting reorder mode returns the
-    /// card to its full size (the expanded state is untouched, so
-    /// an expanded card re-opens as it was).
+    /// reordering); a three-line drag grip takes the chevron's
+    /// place, and the card moves by drag only (the up/down
+    /// arrows were removed Nov 25, 2026 — owner). False
+    /// everywhere else; exiting reorder mode returns the card
+    /// to its full size (the expanded state is untouched, so an
+    /// expanded card re-opens as it was).
     public let isReorderMode: Bool
     public let accessibilityLabel: String
     public let onToggle: () -> Void
@@ -1149,8 +1151,8 @@ public struct FundsExpandableCard<Expanded: View>: View {
                 .contentShape(Rectangle())
                 .onTapGesture {
                     // Reorder mode: the bar does not expand — the
-                    // arrows above the card move it. Everywhere
-                    // else the whole header toggles the card.
+                    // drag grip moves it. Everywhere else the whole
+                    // header toggles the card.
                     if !isReorderMode { onToggle() }
                 }
                 .accessibilityLabel(accessibilityLabel)
@@ -1164,8 +1166,10 @@ public struct FundsExpandableCard<Expanded: View>: View {
             // here, always visible (collapsed or expanded), one
             // uniform 28pt bold in the theme's number colour, on
             // the full card width — nothing cut off, every card
-            // the same size. Hidden in reorder mode (the bar is
-            // just for dragging then).
+            // the same size. Shown in reorder mode too (owner,
+            // Nov 25, 2026): header + amount only, so the card
+            // still reads as a fund card while reordering instead
+            // of a thin strip; the tap below is a no-op then.
             // Build 70 (owner, Nov 24, 2026): the amount body is
             // part of the toggle too — the whole collapsed card
             // (header strip AND amount) expands/collapses on tap.
@@ -1176,11 +1180,14 @@ public struct FundsExpandableCard<Expanded: View>: View {
             // win over the tap gesture (their own actions); the
             // expanded detail below keeps no gesture, so tapping
             // an action inside it never collapses the card.
-            if !isReorderMode {
-                amountBody(pad: pad)
-                    .contentShape(Rectangle())
-                    .onTapGesture { onToggle() }
-            }
+            amountBody(pad: pad)
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    // Reorder mode: the amount shows but does not
+                    // toggle — the card does not expand while
+                    // reordering.
+                    if !isReorderMode { onToggle() }
+                }
             if isExpanded, !isReorderMode {
                 // White body (majority): the detail rows, editors
                 // and actions. Directly below the amount, no gap —
@@ -1365,6 +1372,17 @@ public struct FundsExpandableCard<Expanded: View>: View {
                     .font(.system(size: 15, weight: .bold))
                     .foregroundStyle(hintColor)
                     .rotationEffect(.degrees(isExpanded ? 180 : 0))
+            }
+            // Drag grip (owner, Nov 25, 2026): reorder mode only —
+            // the standard three-line grip in the chevron's place,
+            // so it is obvious the card can be dragged. The grip is
+            // the drag affordance only; the drag itself is the
+            // existing .onDrag on the card container.
+            if isReorderMode {
+                Image(systemName: "line.3.horizontal")
+                    .font(.system(size: 15, weight: .bold))
+                    .foregroundStyle(hintColor)
+                    .accessibilityLabel("Drag to reorder \(TitleCase.apply(to: title))")
             }
         }
         .padding(.horizontal, pad)

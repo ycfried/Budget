@@ -94,10 +94,29 @@ public struct TransactionRowView: View {
     /// badges crammed just under it.
     private let iconSize: CGFloat = 40
 
+    /// Gap between the icon and the text column (the outer header
+    /// HStack's spacing). The expanded detail is indented by the
+    /// row padding (14) + iconSize + this gap, so its labels sit
+    /// under the merchant name, not under the icon (owner,
+    /// Nov 25, 2026).
+    private let iconTextGap: CGFloat = 10
+
+    /// Gap between the merchant name, the amount, and the chevron
+    /// in the header's top half.
+    private let headerRowGap: CGFloat = 10
+
+    /// Fixed slot for the expand chevron. The amount and the
+    /// date/card share one right edge: the amount is inset by this
+    /// slot + headerRowGap, and the date line carries the same
+    /// trailing inset, so the right edge is a straight line
+    /// (owner, Nov 25, 2026 — the column read ragged because the
+    /// chevron only sat on the amount line).
+    private let chevronSlotWidth: CGFloat = 16
+
     public var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             Button(action: onToggle) {
-                HStack(alignment: .top, spacing: 10) {
+                HStack(alignment: .top, spacing: iconTextGap) {
                     TransactionIconView(
                         merchant: transaction.merchant,
                         institutionName: institutionName,
@@ -121,7 +140,7 @@ public struct TransactionRowView: View {
                         // kind is a badge on the bottom line; the
                         // direction + other account live in the
                         // detail panel.
-                        HStack(spacing: 10) {
+                        HStack(spacing: headerRowGap) {
                             TransactionFormatting.highlightedSearchText(
                                 TransactionFormatting.rowTitle(for: transaction),
                                 query: searchQuery
@@ -133,6 +152,11 @@ public struct TransactionRowView: View {
                             TransactionFormatting.highlightedSearchText(amount.text, query: searchQuery)
                                 .font(.system(size: 16, weight: .semibold))
                                 .foregroundStyle(amount.color)
+                                // Tabular figures (owner, Nov 25, 2026):
+                                // digits share one width, so $7.41 and
+                                // $36.69 line up down the column instead
+                                // of reading ragged.
+                                .monospacedDigit()
                                 // Build 53 (owner, Nov 21, 2026): a
                                 // refunded purchase shows its amount
                                 // struck through — the week's total
@@ -143,6 +167,12 @@ public struct TransactionRowView: View {
                             Image(systemName: "chevron.down")
                                 .font(.system(size: 13, weight: .semibold))
                                 .foregroundStyle(Color(hex: "#6b7280"))
+                                // Fixed slot (owner, Nov 25, 2026): the
+                                // chevron's width no longer shifts with
+                                // the row — the amount and the date line
+                                // share one right edge (see the date's
+                                // trailing inset below).
+                                .frame(width: chevronSlotWidth, alignment: .center)
                                 .rotationEffect(.degrees(isExpanded ? 180 : 0))
                         }
                         .frame(height: iconSize / 2)
@@ -192,6 +222,12 @@ public struct TransactionRowView: View {
                                 .font(.system(size: 13))
                                 .foregroundStyle(Color(hex: "#6b7280"))
                                 .lineLimit(1)
+                                // Same trailing inset as the amount's
+                                // chevron slot + gap (owner, Nov 25,
+                                // 2026): the date's right edge lines up
+                                // with the amount's, so the column's
+                                // right edge is a straight line.
+                                .padding(.trailing, chevronSlotWidth + headerRowGap)
                         }
                         .frame(height: iconSize / 2)
                     }
@@ -223,7 +259,12 @@ public struct TransactionRowView: View {
                     onActions: onActions
                 )
                 .padding(.top, 2)
-                .padding(.horizontal, 14)
+                // Indented to the header text column (owner,
+                // Nov 25, 2026): the row padding (14) + icon (40)
+                // + icon-to-text gap, so Source/Type/Edit sit under
+                // the merchant name instead of under the icon.
+                .padding(.leading, 14 + iconSize + iconTextGap)
+                .padding(.trailing, 14)
                 .padding(.bottom, 14)
             }
         }

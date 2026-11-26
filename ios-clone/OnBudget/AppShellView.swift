@@ -302,11 +302,14 @@ public struct AppShellView: View {
         // top position (the card's bottom edge + shadow were
         // painted over by the content below). At the bottom the
         // mirror applies: 12pt ABOVE gives the card's rounded
-        // top + shadow room against the content above, and 16pt
-        // below keeps the floating card clear of the home
-        // indicator / screen edge with room for its shadow.
+        // top + shadow room against the content above, and 8pt
+        // below (owner, Nov 25, 2026 — 16pt sat on top of the
+        // device's ~20pt bottom safe-area inset, so the pill
+        // floated ~36pt above the screen edge) keeps the floating
+        // card clear of the home indicator / screen edge with room
+        // for its shadow. The safe area itself is untouched.
         .padding(.top, 12)
-        .padding(.bottom, 16)
+        .padding(.bottom, 8)
         .background(DesignTokens.background)
         .mainContentWidth(horizontalSizeClass: horizontalSizeClass)
     }

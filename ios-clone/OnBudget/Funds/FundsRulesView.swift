@@ -583,6 +583,13 @@ public struct SpendingAllowanceSection: View {
     /// shape as the allowance field.
     @State private var thresholdText = ""
     @State private var thresholdError: String?
+    /// Per-field explanations (owner, Nov 25, 2026): each label
+    /// carries a small blue ⓘ that shows a short plain-language
+    /// alert — the same pattern as CharityIncomeForm. No inline
+    /// paragraphs; the explanations live behind the ⓘ.
+    @State private var showingAllowanceInfo = false
+    @State private var showingThresholdInfo = false
+    @State private var showingTempInfo = false
     /// True inside the Spending fund container: no card of its own.
     public let bare: Bool
     /// Opens the merged Adjust This Week's Budget sheet (build
@@ -726,9 +733,18 @@ public struct SpendingAllowanceSection: View {
     /// above this amount sends a large purchase notification.
     private var thresholdEditor: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Large Purchase Threshold")
-                .font(.system(size: 15, weight: .semibold))
-                .foregroundStyle(DesignTokens.ink)
+            HStack(spacing: 6) {
+                Text("Large Purchase Threshold")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(DesignTokens.ink)
+                Button(action: { showingThresholdInfo = true }) {
+                    Image(systemName: "info.circle")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(DesignTokens.primary)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("About the large purchase threshold")
+            }
             HStack(spacing: 10) {
                 DollarTextField(text: $thresholdText, placeholder: "0.00", maxWidth: .infinity, minHeight: 52)
                 // Build 68 (item 27): Apply matches its field's
@@ -753,6 +769,11 @@ public struct SpendingAllowanceSection: View {
                 FundsErrorBox(thresholdError)
             }
         }
+        .alert(TitleCase.apply(to: "Large Purchase Threshold"), isPresented: $showingThresholdInfo) {
+            Button("OK") {}
+        } message: {
+            Text("A purchase at or above this amount sends you a large purchase notification.")
+        }
     }
 
     private func thresholdSaveTapped() {
@@ -770,9 +791,18 @@ public struct SpendingAllowanceSection: View {
 
     private var allowanceEditor: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Weekly Allowance")
-                .font(.system(size: 15, weight: .semibold))
-                .foregroundStyle(DesignTokens.ink)
+            HStack(spacing: 6) {
+                Text("Weekly Allowance")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(DesignTokens.ink)
+                Button(action: { showingAllowanceInfo = true }) {
+                    Image(systemName: "info.circle")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(DesignTokens.primary)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("About the weekly allowance")
+            }
             HStack(spacing: 10) {
                 // Build 36 (owner, Nov 16, 2026): the allowance
                 // field and its buttons were the small sizes — the
@@ -806,6 +836,11 @@ public struct SpendingAllowanceSection: View {
                 FundsErrorBox(allowanceError)
             }
         }
+        .alert(TitleCase.apply(to: "Weekly Allowance"), isPresented: $showingAllowanceInfo) {
+            Button("OK") {}
+        } message: {
+            Text("Your base spending budget each week. Top-ups add to it; a Temporary Allowance changes this week's total only.")
+        }
     }
 
     private func saveTapped() {
@@ -837,13 +872,43 @@ public struct SpendingAllowanceSection: View {
             // the status directly under the label, so the two read
             // as one row. No values change: still "Not set"
             // until an override is in effect.
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Temporary Allowance")
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(DesignTokens.ink)
-                Text(tempOverrideCents.map { MoneyFormat.formatCents($0) } ?? "Not set")
-                    .font(.system(size: 15))
-                    .foregroundStyle(tempOverrideCents == nil ? Color(hex: "#6b7280") : DesignTokens.ink)
+            // Owner, Nov 25, 2026: the block was a dead label — no
+            // field, no button. The whole label + status area is an
+            // entry point to the Adjust This Week's Budget sheet
+            // (admins): tapping it calls onAdjustBudget, and the
+            // chevron says so. The ⓘ is a real Button inside the
+            // tappable area and takes precedence over the tap, so it
+            // still shows its explanation. Members see the same
+            // label + status with no chevron and no tap.
+            HStack(alignment: .top) {
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(spacing: 6) {
+                        Text("Temporary Allowance")
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundStyle(DesignTokens.ink)
+                        Button(action: { showingTempInfo = true }) {
+                            Image(systemName: "info.circle")
+                                .font(.system(size: 14, weight: .semibold))
+                                .foregroundStyle(DesignTokens.primary)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("About the temporary allowance")
+                    }
+                    Text(tempOverrideCents.map { MoneyFormat.formatCents($0) } ?? "Not set")
+                        .font(.system(size: 15))
+                        .foregroundStyle(tempOverrideCents == nil ? Color(hex: "#6b7280") : DesignTokens.ink)
+                }
+                Spacer()
+                if isAdmin {
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(Color(hex: "#6b7280"))
+                        .padding(.top, 2)
+                }
+            }
+            .contentShape(Rectangle())
+            .onTapGesture {
+                if isAdmin { onAdjustBudget() }
             }
             .padding(.bottom, 8)
             if let temp = tempOverrideCents, let base = savedBase, temp != base {
@@ -884,6 +949,11 @@ public struct SpendingAllowanceSection: View {
             }
         }
         .padding(.top, 8)
+        .alert(TitleCase.apply(to: "Temporary Allowance"), isPresented: $showingTempInfo) {
+            Button("OK") {}
+        } message: {
+            Text("A one-time change to this week's total only. Next week goes back to your Weekly Allowance.")
+        }
     }
 }
 

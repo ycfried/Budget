@@ -75,15 +75,16 @@ public final class TransactionsViewModel {
     /// Rows fetched so far, date desc, append-only: the first load
     /// fetches `pageSize` rows; each Load More appends the next
     /// `pageSize` via `offset` (owner, Nov 15, 2026 — the list
-    /// loads 25 per page). Filters apply client-side to everything
+    /// loads 50 per page). Filters apply client-side to everything
     /// loaded, so a filter/search/sort change needs no refetch and
     /// no reset — the list re-filters from the rows already here.
     public private(set) var loadedPage: [Transaction] = []
     public private(set) var loadState: LoadState<[Transaction]> = .idle
-    /// Per-page fetch size: 25 (was 100 — the list loaded everything
-    /// at once, which is why it felt slow). Load More appends the
-    /// next 25; it never refetches what is already loaded.
-    public private(set) var pageSize: Int = 25
+    /// Per-page fetch size: 50 (was 25 — raised Nov 25, 2026, so
+    /// going back 2 weeks is ~1 tap instead of 3–4; was 100 before
+    /// that — loading everything at once felt slow). Load More
+    /// appends the next 50; it never refetches what is already loaded.
+    public private(set) var pageSize: Int = 50
     /// True exactly when the probe row came back on the latest fetch
     /// (older rows exist on the server).
     public private(set) var hasMore: Bool = false
@@ -144,6 +145,17 @@ public final class TransactionsViewModel {
     /// row jump.
     public var searchResetNonce: Int = 0
     public var expandedTransactionId: UUID?
+    /// A Home-row jump waiting for its row to expand (owner,
+    /// Nov 25, 2026 — the first jump after launch raced with the
+    /// initial load and was lost). Set by applyTransactionJump
+    /// and cleared ONLY when the expansion actually lands (or
+    /// the row genuinely cannot be found). Every load() completion
+    /// re-applies it (see tryExpandPendingJump), so a jump that
+    /// arrived while the list was still loading — or whose load
+    /// was cancelled by a competing load, e.g. the auto-sync's
+    /// trailing reload — expands the moment the rows land instead
+    /// of being dropped.
+    private var pendingJumpId: UUID?
     public var isSyncing: Bool = false
     public var isSaving: Bool = false
     /// When the last sync (manual or automatic) STARTED (build 69,
@@ -464,6 +476,10 @@ public final class TransactionsViewModel {
                     self.loadedPage = merged
                     self.hasMore = false
                     self.loadState = .loaded(merged)
+                    // A Home-row jump may be waiting for these rows
+                    // (first jump after launch): expand it now that
+                    // the list has landed.
+                    self.tryExpandPendingJump()
                 } else if self.isTzedakaMode {
                     // Build 65: Tzedaka mode loads the FULL history
                     // at once (all time, no Load More) — the
@@ -476,6 +492,10 @@ public final class TransactionsViewModel {
                     self.loadedPage = all
                     self.hasMore = false
                     self.loadState = .loaded(all)
+                    // A Home-row jump may be waiting for these rows
+                    // (first jump after launch): expand it now that
+                    // the list has landed.
+                    self.tryExpandPendingJump()
                 } else {
                     let (rows, hasMore) = try await self.client.postgrest.transactionsPage(
                         householdId: self.householdId,
@@ -492,6 +512,10 @@ public final class TransactionsViewModel {
                     // making the user tap Load More repeatedly.
                     await self.autoFillFilteredPage()
                     self.loadState = .loaded(self.loadedPage)
+                    // A Home-row jump may be waiting for these rows
+                    // (first jump after launch): expand it now that
+                    // the list has landed.
+                    self.tryExpandPendingJump()
                 }
                 // Best-effort extras (allowance flag for the sync
                 // button, institution map for bank icons) run
@@ -687,27 +711,49 @@ public final class TransactionsViewModel {
     /// Build 77 (owner, Nov 25, 2026): if it is NOT in the loaded
     /// page, do NOT give up with a toast. The common case is the
     /// user was viewing a past week, so the loaded page holds only
-    /// that week's rows — the tapped row (e.g. a Recent
-    /// Transaction from another week) is not in it. Reload the
-    /// full unfiltered list — first page, then Load More as
-    /// needed, bounded — and expand the row when it turns up.
-    /// Only if it genuinely cannot be found after loading does
-    /// the toast appear.
+    /// Expand the still-pending jump if its row is in the loaded
+    /// page. Called by applyTransactionJump AND by load()'s
+    /// completion (all three paths), so a jump that arrived while
+    /// the list was still loading is re-applied the moment the rows
+    /// land. Returns true when the expansion landed (and clears
+    /// the pending jump); false leaves it pending for the next load.
+    @discardableResult
+    private func tryExpandPendingJump() -> Bool {
+        guard let id = pendingJumpId, loadedPage.contains(where: { $0.id == id }) else { return false }
+        expandedTransactionId = id
+        pendingJumpId = nil
+        return true
+    }
+
+    /// Home recent-row jump (Build 77, owner Nov 25, 2026): if the
+    /// tapped row is NOT in the loaded page, do NOT give up with a
+    /// toast — the common case is the user was viewing a past week,
+    /// so the loaded page holds only that week's rows. Reload the
+    /// full unfiltered list — first page, then Load More as needed,
+    /// bounded — and expand the row when it turns up. Only if it
+    /// genuinely cannot be found after loading does the toast
+    /// appear. The jump is sticky (pendingJumpId): the first jump
+    /// after launch used to be single-shot — the flag was cleared
+    /// before the async work, so if the initial load (or the
+    /// auto-sync's trailing reload) cancelled the jump's own load,
+    /// the expansion was lost with nothing to retry it. Now the
+    /// pending jump survives until the expansion lands: load()'s
+    /// completion re-applies it, and the Load More loop below
+    /// re-checks after every page.
     public func applyTransactionJump(_ id: UUID) async {
+        pendingJumpId = id
         clearSearchAndFilters()
-        if loadedPage.contains(where: { $0.id == id }) {
-            expandedTransactionId = id
-            return
-        }
+        // Row already here: expand at once (the later-tap path —
+        // no load to race with, so it sticks).
+        if tryExpandPendingJump() { return }
         // Not in the loaded page: refetch the full unfiltered
         // list (filters are cleared and week/tzedaka mode is off,
         // so load() takes the normal path — the most recent page
-        // first).
+        // first). load()'s completion re-applies the pending jump,
+        // so if the row turns up there the expansion is already
+        // set when this returns.
         await load()
-        if loadedPage.contains(where: { $0.id == id }) {
-            expandedTransactionId = id
-            return
-        }
+        if pendingJumpId == nil { return }
         // Still not found — it is older than the first page. Keep
         // loading more pages (bounded, like the auto-fill) until
         // it turns up or there is nothing left to load.
@@ -715,11 +761,10 @@ public final class TransactionsViewModel {
         while hasMore, pagesFetched < 8 {
             await loadMore()
             pagesFetched += 1
-            if loadedPage.contains(where: { $0.id == id }) {
-                expandedTransactionId = id
-                return
-            }
+            if tryExpandPendingJump() { return }
         }
+        // Genuinely not found: clear the pending jump and say so.
+        pendingJumpId = nil
         confirm("That transaction is not in the loaded list — tap Load more for older ones.", kind: .info)
     }
 
