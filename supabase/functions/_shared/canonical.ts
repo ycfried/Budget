@@ -290,17 +290,20 @@ export async function loadMerchantRules(
   }
 }
 
-// --- Email source set (build 44, item 4) ---
+// --- Email source set (build 44, item 4; multi-bank Nov 26, 2026) ---
 // The merge paths below used to hardcode source 'amex_alert'. The
 // set is the single place that knows which transaction sources are
 // email alerts; adding a bank means adding its source here (and a
-// parser in gmail-parse.ts) — no other merge code changes. Amex is
-// the proven source; Chase is a FAIL-CLOSED SCAFFOLD (F-15, build
-// 64): registered here and parsed by parseChaseAlertText, but the
-// Chase path is DISABLED in gmail-poll (CHASE_ALERTS_ENABLED =
-// false) until a real redacted Chase alert is verified against the
-// parser — no sample exists in the repo. Capital One: not started.
-export const EMAIL_SOURCES = ['amex_alert', 'chase_alert'] as const;
+// parser in gmail-parse.ts) — no other merge code changes.
+// Amex (Large Purchase alerts) plus the nine banks parsed by
+// parseBankAlertText in gmail-parse.ts. Verification status lives
+// with the parser: Chase / BofA / Capital One / Citi bodies were
+// verified live; Wells Fargo / US Bank / Discover rest on
+// user-posted screenshots; PNC / TD have NO confirmed purchase
+// template and rely on the generic rules only. Adding a bank's
+// source here makes its rows claimable by the Plaid hash match and
+// eligible for the bank+email auto-merge, exactly like Amex rows.
+export const EMAIL_SOURCES = ['amex_alert', 'chase_alert', 'bofa_alert', 'wellsfargo_alert', 'citi_alert', 'capitalone_alert', 'discover_alert', 'usbank_alert', 'pnc_alert', 'td_alert'] as const;
 export function isEmailSource(source: string): boolean {
   return (EMAIL_SOURCES as readonly string[]).includes(source);
 }

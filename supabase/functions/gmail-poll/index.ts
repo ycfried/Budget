@@ -1,5 +1,5 @@
-// gmail-poll — polls each connected Gmail mailbox for Amex Large
-// Purchase alerts and stores them as PROVISIONAL transactions through
+// gmail-poll — polls each connected Gmail mailbox for bank purchase
+// alerts and stores them as PROVISIONAL transactions through
 // the same contract as ingest-amex-alert.
 //
 // Contract:
@@ -25,24 +25,32 @@
 //        last_error='reauthorization required' and is skipped until
 //        the admin reconnects. Transient failures leave the status
 //        alone and only record last_error.
-//     2. List messages matching the alert query (Amex Large
-//        Purchase alerts; Chase alerts join the query only while
-//        CHASE_ALERTS_ENABLED is true, F-15), paginated with
-//        pageToken (50 per page, up to 20 pages — P2-C1, Nov 8, 2026)
-//        so a burst of alerts is processed, not just the first page.
+//     2. List messages matching buildAlertQuery() (Amex Large
+//        Purchase clause + nine bank sender clauses, Nov 26, 2026),
+//        paginated with pageToken (50 per page, up to 20 pages —
+//        P2-C1, Nov 8, 2026) so a burst of alerts is processed, not
+//        just the first page.
 //     3. Skip message ids already in processed_email_ids for this
 //        connection. NO Gmail labels are read or written — dedupe is
 //        server-side, so only the gmail.readonly scope is ever needed.
 //     4. For each new message: fetch it (format=full) and fail closed.
-//        Authentication-Results must pass the per-bank ingest rule
-//        (bank domain + dkim=pass + spf=pass) or the message
-//        is recorded 'quarantined' and NEVER stored. An alert that does
-//        not parse is recorded 'unparseable' and never guessed into a
-//        transaction. A message already in transactions (same
-//        external_id) is recorded 'duplicate', never double-stored.
+//        The sender routes the message. Amex keeps its exact original
+//        rule (americanexpress.com + dkim=pass + spf=pass,
+//        parseAmexAlertText). Any other allowlisted bank must pass its
+//        own domain + dkim=pass + spf=pass (authResultsPassForBank)
+//        and parse with parseBankAlertText; anything else — unknown
+//        sender, lookalike domain, failed auth — is recorded
+//        'quarantined' and NEVER stored. An alert that does not parse
+//        (including declined / fraud / payment-due / deposit mail,
+//        classified by headline, not subject) is recorded
+//        'unparseable' and never guessed into a transaction. A message
+//        already in transactions (same external_id) is recorded
+//        'duplicate', never double-stored. A bank alert matching an
+//        already-stored email row (pending authorisation, then the
+//        posted charge) is likewise 'duplicate'.
 //     5. A parsed alert inserts ONE provisional transaction, exactly
-//        like ingest-amex-alert: source 'amex_alert' (or
-//        'chase_alert' while the F-15 gate is on), state
+//        like ingest-amex-alert: source per bank ('amex_alert',
+//        'chase_alert', … — see BANK_ALERT_SOURCE), state
 //        'provisional', kind from classifyMerchantOnly, external_id =
 //        the Gmail message id, dedupe_hash = canonical hash (so a
 //        later Plaid sync can MATCH this row instead of double
@@ -63,16 +71,21 @@
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import {
-  authResultsPassFor,
+  authResultsPass,
+  authResultsPassForBank,
+  BANK_ALERT_SOURCE,
+  bankAlertMatches,
+  bankForSource,
   buildAlertQuery,
-  buildChaseAlertQuery,
   extractPlainText,
   filterNewMessageIds,
   gmailDateToNY,
   headerValue,
-  parseEmailAlert,
+  identifyBankAlert,
+  parseAmexAlertText,
+  parseBankAlertText,
 } from './gmail-parse.ts';
-import { accrueCharityForIncomeTx, applyMerchantRuleToMerchant, canonicalHash, classifyMerchantOnly, findCoveringBankRow, findExistingSameHash, flagLookalikes, loadMerchantRules, normalizeMerchant } from './canonical.ts';
+import { accrueCharityForIncomeTx, addDaysToDate, applyMerchantRuleToMerchant, canonicalHash, classifyMerchantOnly, EMAIL_SOURCES, findCoveringBankRow, findExistingSameHash, flagLookalikes, loadMerchantRules, normalizeMerchant } from './canonical.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -80,15 +93,6 @@ const corsHeaders = {
 };
 
 const MAX_MESSAGES_PER_POLL = 50;
-
-// F-15 (build 64, Nov 23, 2026) — Chase alerts: DISABLED until a
-// real redacted Chase alert is verified against parseChaseAlertText
-// (supabase/functions/_shared/gmail-parse.ts). No sample exists in
-// the repo, so the parser's extraction patterns are best-guess
-// shapes, not the real format. Flip this to true ONLY after that
-// verification — before then the poll must not fetch Chase mail the
-// parser has never seen. Amex is unaffected by this gate.
-const CHASE_ALERTS_ENABLED = false;
 
 // Hex key decoding (see gmail-oauth-callback): GMAIL_TOKEN_KEY is
 // 64-char hex, not base64 — atob() on it yields 48 bytes and AES-GCM
@@ -276,12 +280,7 @@ Deno.serve(async (req) => {
         let pagesFetched = 0;
         const MAX_PAGES_PER_POLL = 20;
         for (;;) {
-          // F-15: the Chase query joins only while the gate is on.
-          // Gmail OR syntax: {query1 query2}.
-          const alertQuery = CHASE_ALERTS_ENABLED
-            ? `{${buildAlertQuery()} ${buildChaseAlertQuery()}}`
-            : buildAlertQuery();
-          const listUrl = `https://gmail.googleapis.com/gmail/v1/users/me/messages?q=${encodeURIComponent(alertQuery)}&maxResults=${MAX_MESSAGES_PER_POLL}` +
+          const listUrl = `https://gmail.googleapis.com/gmail/v1/users/me/messages?q=${encodeURIComponent(buildAlertQuery())}&maxResults=${MAX_MESSAGES_PER_POLL}` +
             (pageToken ? `&pageToken=${encodeURIComponent(pageToken)}` : '');
           const listRes = await fetch(listUrl, { headers: gHeaders });
           const listData = await listRes.json().catch(() => ({}));
@@ -318,35 +317,38 @@ Deno.serve(async (req) => {
             const headers = (msg.payload?.headers ?? []) as { name: string; value: string }[];
             const authResults = headerValue(headers, 'Authentication-Results');
             const subject = headerValue(headers, 'Subject');
-            // F-15: dispatch by sender domain. Amex mail takes the
-            // proven Amex path; Chase mail takes the scaffold path
-            // (parseChaseAlertText) and is skipped entirely while
-            // CHASE_ALERTS_ENABLED is false — defence in depth on
-            // top of the query gate, so a Chase message that
-            // reaches this loop by any other route is never stored.
             const from = headerValue(headers, 'From');
-            const isChase = /chase\.com|jpmorganchase\.com/i.test(from);
-            const source = isChase ? 'chase_alert' : 'amex_alert';
-            if (isChase && !CHASE_ALERTS_ENABLED) {
-              await supabaseAdmin.from('processed_email_ids').insert({
-                connection_id: conn.id, message_id: messageId, disposition: 'quarantined',
-              });
-              totals.quarantined += 1;
-              continue;
-            }
-            if (!authResultsPassFor(source, authResults)) {
-              await supabaseAdmin.from('processed_email_ids').insert({
-                connection_id: conn.id, message_id: messageId, disposition: 'quarantined',
-              });
-              totals.quarantined += 1;
-              continue;
-            }
             const date = gmailDateToNY(msg.internalDate);
-            const parsed = parseEmailAlert(source, {
-              subject,
-              body: extractPlainText(msg.payload),
-              date,
-            });
+            const body = extractPlainText(msg.payload);
+            // Route by sender. Amex keeps its exact original path
+            // (americanexpress.com + dkim + spf, parseAmexAlertText,
+            // source 'amex_alert'). Any other allowlisted bank uses
+            // its own domain + dkim + spf gate and parseBankAlertText;
+            // anything else quarantines, never stores.
+            const fromAmex = /americanexpress\.com/i.test(from) || /americanexpress\.com/i.test(authResults);
+            let parsed: { amountCents: number; merchant: string; cardSuffix: string; date: string } | null = null;
+            let source = 'amex_alert';
+            if (fromAmex) {
+              if (!authResultsPass(authResults)) {
+                await supabaseAdmin.from('processed_email_ids').insert({
+                  connection_id: conn.id, message_id: messageId, disposition: 'quarantined',
+                });
+                totals.quarantined += 1;
+                continue;
+              }
+              parsed = parseAmexAlertText({ subject, body, date });
+            } else {
+              const bank = identifyBankAlert(from, authResults);
+              if (!bank || !authResultsPassForBank(authResults, bank)) {
+                await supabaseAdmin.from('processed_email_ids').insert({
+                  connection_id: conn.id, message_id: messageId, disposition: 'quarantined',
+                });
+                totals.quarantined += 1;
+                continue;
+              }
+              source = BANK_ALERT_SOURCE[bank];
+              parsed = parseBankAlertText({ subject, body, date, from, authResults });
+            }
             if (!parsed) {
               await supabaseAdmin.from('processed_email_ids').insert({
                 connection_id: conn.id, message_id: messageId, disposition: 'unparseable',
@@ -367,6 +369,51 @@ Deno.serve(async (req) => {
               totals.duplicates += 1;
               continue;
             }
+            // Pending-vs-posted dedupe (multi-bank, Nov 26, 2026):
+            // Capital One / Discover email twice for one purchase
+            // (authorisation, then the posted charge) and Wells
+            // Fargo can fire several alert types for one purchase.
+            // The message-id dedupe above cannot catch those —
+            // different messages. So a bank alert matching an
+            // already-stored EMAIL row (same bank + amount +
+            // squashed merchant + card or unknown + date ±1 day,
+            // bankAlertMatches) is a duplicate, never a second row.
+            // Amex is excluded: its Large Purchase alerts fire once
+            // per purchase. Best-effort: a failed lookup falls
+            // through to the insert (the bank-first guard below
+            // still protects against a Plaid double).
+            if (source !== 'amex_alert') {
+              const alertBank = bankForSource(source);
+              if (alertBank) {
+                const thisAlert = { bank: alertBank, cardSuffix: parsed.cardSuffix, amountCents: parsed.amountCents, merchant: parsed.merchant, date: parsed.date };
+                try {
+                  const { data: priorAlerts } = await supabaseAdmin.from('transactions')
+                    .select('merchant, date, amount_cents, card_suffix, source')
+                    .eq('household_id', householdId)
+                    .eq('amount_cents', parsed.amountCents)
+                    .gte('date', addDaysToDate(parsed.date, -1))
+                    .lte('date', addDaysToDate(parsed.date, 1))
+                    .in('source', [...EMAIL_SOURCES]);
+                  const dupe = (priorAlerts ?? []).some((row: { merchant?: string; date?: string; amount_cents?: number; card_suffix?: string; source?: string }) => {
+                    const rowBank = bankForSource(String(row.source ?? ''));
+                    if (!rowBank) return false;
+                    return bankAlertMatches(
+                      thisAlert,
+                      { bank: rowBank, cardSuffix: String(row.card_suffix ?? '0000'), amountCents: Number(row.amount_cents ?? 0), merchant: String(row.merchant ?? ''), date: String(row.date ?? '') },
+                    );
+                  });
+                  if (dupe) {
+                    await supabaseAdmin.from('processed_email_ids').insert({
+                      connection_id: conn.id, message_id: messageId, disposition: 'duplicate',
+                    });
+                    totals.duplicates += 1;
+                    continue;
+                  }
+                } catch {
+                  // Fall through to the insert below.
+                }
+              }
+            }
             // Build 30 (merchant rules): the rule's display name is
             // what is stored AND hashed, so this alert hashes like
             // its bank row. A rule's fixed kind overrides the
@@ -385,17 +432,13 @@ Deno.serve(async (req) => {
             // later merges them. Skip when a Plaid row covers this
             // purchase — same amount + same card (or unknown suffix)
             // + date within 2 days + merchant-related (same kind,
-            // same household). Plaid rows only, never an email-alert
+            // same household). Plaid rows only, never an email
             // row, so two real identical purchases with no bank row
             // still both insert. The exact-hash case is the special
             // case where all of those are equalities. A TOIREMORG
             // alert is never swallowed here: the eligibility check
             // refuses TOIREMORG pairs, so the alert inserts and the
-            // pair stays two real gifts (owner ruling Nov 3). The
-            // guard is the same for Amex and Chase rows (F-15):
-            // findCoveringBankRow and findExistingSameHash are
-            // source-agnostic, and the insert below stores the
-            // dispatched source.
+            // pair stays two real gifts (owner ruling Nov 3).
             const coveringBankRow = await findCoveringBankRow(supabaseAdmin, householdId, {
               merchant, date: parsed.date, amount_cents: parsed.amountCents,
               card_suffix: parsed.cardSuffix, kind,

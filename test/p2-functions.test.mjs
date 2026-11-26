@@ -17,7 +17,11 @@ test('P2-B1: gmail-parse copies are byte-identical (_shared vs gmail-poll)', () 
   const shared = read('../supabase/functions/_shared/gmail-parse.ts');
   const poll = read('../supabase/functions/gmail-poll/gmail-parse.ts');
   assert.equal(shared, poll);
-  assert.ok(shared.includes('Subject-phrase only: the bare whole-message phrase also matched'));
+  // Nov 26, 2026: the buildAlertQuery comment was rewritten for the
+  // multi-bank query, but the Amex lesson it records is unchanged —
+  // statements mention Large Purchase in the body, so Amex keeps
+  // its subject restriction. Pin the new wording, not the old.
+  assert.ok(shared.includes('Amex keeps its subject restriction'));
 });
 
 // --- P2-NEW3: gmail-poll generic last_error -------------------------------
