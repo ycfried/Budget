@@ -50,6 +50,14 @@ final class CSVImportViewModel: ObservableObject {
     @Published var isReading = false
     @Published var isImporting = false
     @Published var showPicker = false
+    /// Loading-state (Nov 26, 2026): how many preview rows the
+    /// parse produced, while the whole-history dedupe fetch is
+    /// still running. The parse is synchronous, so this count is
+    /// exact before the wait starts — the reading state can show
+    /// exactly that many row skeletons, so the Confirm Import
+    /// button below holds its place instead of jumping down when
+    /// the preview lands. 0 while no file is being read.
+    @Published var pendingPreviewRowCount = 0
 
     var newRows: [ParsedCSVRow] {
         previewRows.filter { !$0.isDuplicate }.map { $0.row }
@@ -79,6 +87,7 @@ final class CSVImportViewModel: ObservableObject {
         previewRows = []
         parseErrors = []
         resultMessage = nil
+        pendingPreviewRowCount = 0
         Task { await readAndPreview(url: url) }
     }
 
@@ -93,6 +102,10 @@ final class CSVImportViewModel: ObservableObject {
             return
         }
         let parsed = CSVParsing.parseCSV(text)
+        // The row count is known now, before the dedupe wait —
+        // the reading state shows this many row skeletons below,
+        // so the layout holds its shape while dedupe runs.
+        pendingPreviewRowCount = parsed.rows.count
         // Whole-history dedupe (paged). A failed page throws into
         // this handler — loud error, never a silently all-New preview.
         let existingKeys: Set<String>
@@ -104,6 +117,7 @@ final class CSVImportViewModel: ObservableObject {
         } catch {
             previewRows = []
             parseErrors = []
+            pendingPreviewRowCount = 0
             // The FILE read fine — this is the whole-history dedupe
             // fetch that failed (audit CF-4, Nov 12 2026): saying
             // "could not read this file" blamed the file and sent
@@ -120,12 +134,14 @@ final class CSVImportViewModel: ObservableObject {
             return CSVPreviewRow(row: row, isDuplicate: isDuplicate)
         }
         parseErrors = parsed.errors
+        pendingPreviewRowCount = 0
         resultMessage = nil
     }
 
     private func showPickerError(_ message: String) {
         previewRows = []
         parseErrors = []
+        pendingPreviewRowCount = 0
         resultMessage = message
         resultIsError = true
     }
@@ -284,10 +300,19 @@ struct CSVImportView: View {
             }
 
             if viewModel.isReading {
-                HStack {
-                    Spacer()
-                    BrandedLoader(size: 40)
-                    Spacer()
+                // Preview-shaped skeletons, not the branded loader:
+                // a summary line + exactly as many row skeletons as
+                // the parse produced (see `pendingPreviewRowCount`),
+                // so the Confirm Import button below holds its
+                // place while the dedupe fetch runs. A preview row
+                // that wraps to two lines on a narrow screen is
+                // still taller than its one-line skeleton — that
+                // residual is noted in the report.
+                VStack(alignment: .leading, spacing: 8) {
+                    SkeletonBlock(width: 260, height: 16)
+                    ForEach(0..<viewModel.pendingPreviewRowCount, id: \.self) { _ in
+                        SkeletonBlock(width: nil, height: 20)
+                    }
                 }
             }
 

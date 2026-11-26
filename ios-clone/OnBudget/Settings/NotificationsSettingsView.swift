@@ -185,6 +185,20 @@ struct NotificationsSettingsView: View {
     var body: some View {
         SettingsCard(title: hideCardTitle ? nil : "Notifications") {
             VStack(alignment: .leading, spacing: 12) {
+                // Loading-state gate (Nov 26, 2026 — Funds-page
+                // pattern): the WHOLE card — header included —
+                // shows skeletons until the load resolves. Before
+                // this the header rendered immediately with
+                // `systemIsOn` still false, so the "Open Settings"
+                // button flashed and then vanished on devices with
+                // notifications on, and the toggles below rendered
+                // with the `allOn` default and then flipped to the
+                // saved values. A failed load still clears
+                // `isLoading`, so the error box shows, never a
+                // skeleton forever.
+                if viewModel.isLoading {
+                    notificationsLoadingSkeleton
+                } else {
                 // Build 43 (owner, Nov 17, 2026): the "On" text at
                 // the top right is gone — redundant, the "All
                 // Notifications" toggle below already shows the
@@ -221,15 +235,7 @@ struct NotificationsSettingsView: View {
                     Text("Get a heads-up when a week closes or a new purchase comes in.")
                 }
                 Divider()
-                if viewModel.isLoading {
-                    // Build 74 (B5): row skeletons shaped like the
-                    // toggle rows below, not "Loading…" text.
-                    VStack(alignment: .leading, spacing: 12) {
-                        SkeletonBlock(height: 48)
-                        SkeletonBlock(height: 48)
-                        SkeletonBlock(height: 48)
-                    }
-                } else if let error = viewModel.loadError {
+                if let error = viewModel.loadError {
                     FundsErrorBox(error)
                     FundsSmallTertiaryButton("Try Again") {
                         Task { await viewModel.load() }
@@ -301,9 +307,38 @@ struct NotificationsSettingsView: View {
                         }
                     }
                 }
+                }
             }
         }
         .accessibilityIdentifier("settings.notifications")
         .task { await viewModel.load() }
+    }
+
+    /// Loading skeletons shaped like the loaded card (Nov 26,
+    /// 2026): header row (title + info circle), divider, master
+    /// toggle row, and the five collapsed category headers — the
+    /// shape the card has when the master is on, which is the
+    /// default (`allOn`). When the master is off the loaded card
+    /// is shorter (no categories), so the card settles shorter
+    /// after the swap; that height is only knowable after the
+    /// load, and nothing sits below this card to be pushed.
+    private var notificationsLoadingSkeleton: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 6) {
+                SkeletonBlock(width: 130, height: 16)
+                SkeletonBlock(width: 28, height: 28, cornerRadius: 14)
+                Spacer()
+            }
+            Divider()
+            SkeletonBlock(width: nil, height: 48)
+            ForEach(0..<5, id: \.self) { index in
+                VStack(alignment: .leading, spacing: 12) {
+                    SkeletonBlock(width: 140, height: 20)
+                    if index < 4 {
+                        Divider()
+                    }
+                }
+            }
+        }
     }
 }

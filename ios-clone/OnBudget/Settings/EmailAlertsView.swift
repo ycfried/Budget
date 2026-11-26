@@ -138,6 +138,16 @@ final class EmailAlertsViewModel: ObservableObject {
     /// "None." (audit S-P1-2).
     @Published var loadFailed = false
     @Published var isLoading = false
+    /// Loading-state gate (Nov 26, 2026 — Funds-page pattern): true
+    /// once the FIRST load has resolved (success or failure). The
+    /// card shows skeletons shaped like its content until then.
+    /// Before this the card rendered its heading, buttons and
+    /// result area immediately, the error banner (if any) appeared
+    /// at the top after the load, and the connection rows popped
+    /// in between — pushing the Connect / Check buttons down after
+    /// first paint. Reloads (Check Email Now, disconnect) keep the
+    /// stale rows on screen; this flag stays true.
+    @Published var hasLoaded = false
     @Published var isConnecting = false
     @Published var isChecking = false
     @Published var resultMessage: String?
@@ -202,6 +212,7 @@ final class EmailAlertsViewModel: ObservableObject {
             loadError = "Could not load email connections."
             loadFailed = true
         }
+        hasLoaded = true
     }
 
     /// Plain-language `last_error` (audit CF-2, Nov 12 2026): the
@@ -424,6 +435,14 @@ struct EmailAlertsView: View {
 
     var body: some View {
         SettingsCard(title: "Email Alerts") {
+            // Loading-state gate (Nov 26, 2026 — Funds-page
+            // pattern): skeletons shaped like the card until the
+            // first load resolves, so the error banner and the
+            // connection rows never push the buttons down after
+            // first paint.
+            if !viewModel.hasLoaded {
+                emailLoadingSkeleton
+            } else {
             // Build 49 (owner, Nov 19, 2026): when a connection is in
             // error state, email alerts have stopped — say so out loud
             // at the top of the card with a reconnect action, not a
@@ -458,12 +477,11 @@ struct EmailAlertsView: View {
                 .buttonStyle(TertiaryButtonStyle())
             }
             if viewModel.isLoading && viewModel.connections.isEmpty {
-                HStack {
-                    Spacer()
-                    BrandedLoader()
-                    Spacer()
-                }
-                .padding(.top, 24)
+                // Reload with an empty list (first load is gated
+                // above): connection-row skeletons, not the branded
+                // loader — the loader is not shaped like the rows.
+                connectionRowSkeleton
+                connectionRowSkeleton
             } else if !viewModel.connections.isEmpty {
                 ForEach(viewModel.connections) { connection in
                     connectionRow(connection)
@@ -498,6 +516,7 @@ struct EmailAlertsView: View {
                     // hand-rolled blue box.
                     InfoBox(message)
                 }
+            }
             }
         }
         .task { await viewModel.load() }
@@ -545,6 +564,40 @@ struct EmailAlertsView: View {
             if let choices = viewModel.householdChoices {
                 householdPickerSheet(choices: choices)
             }
+        }
+    }
+
+    /// Loading skeletons shaped like the loaded card (Nov 26,
+    /// 2026): "Connected Email" heading, two connection rows,
+    /// Connect / Check buttons (admin only — `isAdmin` comes from
+    /// the sync context, so the shape is known before the load).
+    /// Two rows is representative; the real row count is only
+    /// knowable after the load.
+    private var emailLoadingSkeleton: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            SkeletonBlock(width: 150, height: 20)
+            connectionRowSkeleton
+            connectionRowSkeleton
+            if viewModel.isAdmin {
+                HStack(spacing: 12) {
+                    SkeletonBlock(width: 140, height: 44, cornerRadius: 10)
+                    SkeletonBlock(width: 150, height: 44, cornerRadius: 10)
+                }
+            }
+        }
+    }
+
+    /// One connection-row skeleton: three text lines + Disconnect
+    /// button, matching the loaded row's shape.
+    private var connectionRowSkeleton: some View {
+        HStack(alignment: .top, spacing: 12) {
+            VStack(alignment: .leading, spacing: 6) {
+                SkeletonBlock(width: 200, height: 14)
+                SkeletonBlock(width: 100, height: 12)
+                SkeletonBlock(width: 160, height: 12)
+            }
+            Spacer()
+            SkeletonBlock(width: 92, height: 32, cornerRadius: 10)
         }
     }
 
