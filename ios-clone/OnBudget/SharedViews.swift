@@ -1528,9 +1528,16 @@ public enum SkeletonFill {
 }
 
 /// Shimmer skeleton of one transaction row (40pt icon + two text
-/// lines + amount), matching the loaded Recent / Transactions row
-/// shape. Used for the Recent Transactions loading state on Home
-/// and the Transactions list loading state.
+/// lines + amount), matching the loaded Home Recent row shape:
+/// 40pt icon + 2pt top/bottom padding = 44pt tall, so a skeleton
+/// row and a loaded row occupy exactly the same height (owner,
+/// Nov 26, 2026 — Home is NOT scrollable; the skeleton and the
+/// loaded list must match exactly). Used for the Recent
+/// Transactions loading state on Home and the Transactions list
+/// loading state (there it sits inside 14pt padding, so the
+/// shorter row only makes the skeleton card a little shorter
+/// while loading — the list scrolls and the loaded rows replace
+/// it).
 public struct TransactionRowSkeleton: View {
     public init() {}
     public var body: some View {
@@ -1543,7 +1550,7 @@ public struct TransactionRowSkeleton: View {
             Spacer()
             SkeletonBlock(width: 64, height: 16)
         }
-        .padding(.vertical, 6)
+        .padding(.vertical, 2)
         .accessibilityHidden(true)
     }
 }

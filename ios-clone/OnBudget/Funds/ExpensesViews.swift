@@ -278,7 +278,7 @@ public struct ExpensesListView: View {
         .alert("Recurring Expenses", isPresented: $showAboutInfo) {
             Button("OK") {}
         } message: {
-            Text("Expenses do not count toward weekly spending — the Weekly Budget Calculator uses them to work out the allowance.")
+            Text("Expenses do not count toward weekly spending — the Weekly Allowance Calculator uses them to work out the allowance.")
         }
         .sheet(item: $selectedExpense) { expense in
             ExpenseEditorSheet(
@@ -760,6 +760,54 @@ public struct ExpenseTagPickerSheet: View {
         return MoneyFormat.dateString(from: sunday)
     }
 
+    /// Whole-row sizing (owner, Nov 26, 2026 — a row was cut
+    /// midway at the sheet's bottom edge): the list ScrollView
+    /// has a FIXED height of exactly `visibleRowCount` whole rows,
+    /// and the sheet sizes to its content
+    /// (`.presentationSizing(.fitted)`), so the last visible row
+    /// is always FULLY shown, never half-cut. A charge row is
+    /// 60pt tall (40pt icon + 10pt top/bottom padding) plus the
+    /// 0.5pt divider = 60.5pt pitch; the list height is a multiple
+    /// of that pitch, so the boundary is exact regardless of the
+    /// chrome estimate below (the estimate only sets HOW MANY
+    /// rows fit, not whether a row is cut). The bottom sheet is
+    /// KEPT (owner asked whether it should be centered — a bottom
+    /// sheet is the right pattern for a scrolling list picker;
+    /// a centered popup would be cramped for a long list).
+    private let rowPitch: CGFloat = 60.5
+    /// The sheet chrome above/below the list, estimated: header
+    /// 44 + explainer ~40 + search ~50 + 3×16pt VStack gaps +
+    /// 32pt outer padding ≈ 214, rounded to 220. An estimate is
+    /// fine — it only sets the row count; the row boundary is
+    /// guaranteed by the list height being a multiple of the
+    /// pitch (see above).
+    private let sheetChrome: CGFloat = 220
+    /// The sheet leaves this much of the screen visible at the
+    /// top, so it still reads as a sheet (and can be swiped
+    /// down). Short screens (landscape phones) leave less, so
+    /// the sheet still fits.
+    private var sheetTopGap: CGFloat {
+        UIScreen.main.bounds.height < 500 ? 32 : 80
+    }
+    /// How many whole rows fit: the screen height minus the top
+    /// gap and the chrome, divided by the row pitch, rounded
+    /// DOWN (never up — rounding up would cut a row). At least 2,
+    /// so even a short landscape phone shows whole rows. Read
+    /// from `UIScreen.main.bounds` like the Calculator width and
+    /// `SkeletonFill` — the view re-evaluates on rotation, so
+    /// the count is the true fit for the current orientation.
+    private var visibleRowCount: Int {
+        let available = UIScreen.main.bounds.height - sheetTopGap - sheetChrome
+        return max(2, Int(available / rowPitch))
+    }
+    /// The list height: exactly `visibleRowCount` whole rows.
+    /// Applied to BOTH the skeleton and the loaded ScrollView,
+    /// so the sheet is the same height while loading and loaded
+    /// (no resize jump when the list lands).
+    private var listHeight: CGFloat {
+        CGFloat(visibleRowCount) * rowPitch
+    }
+
     public var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             SheetHeader(title: "Tag a Charge as an Expense", onClose: onClose)
@@ -793,28 +841,30 @@ public struct ExpenseTagPickerSheet: View {
                 // (owner, Nov 25, 2026): skeleton rows shaped
                 // like the charge rows (icon + two text lines),
                 // never a spinner, "Loading…" or a premature
-                // "No charges" empty state. Enough rows to fill
-                // the visible page (owner, Nov 26, 2026 —
-                // skeletons must fill the whole visible page, not
-                // a fixed six); a charge row is 61pt tall and the
-                // list starts ~100pt down the sheet (search
-                // field + padding), so the count fills the sheet
-                // at its large detent on every device.
-                // Loading mandate (owner, Nov 26, 2026): the gate
-                // is the data being ready, NOT `viewModel.isLoading`
-                // — a background refresh (tagging an expense runs
-                // one) used to blank this open picker back to
-                // skeletons mid-use, even though the cached list
-                // was still good. `calculatorDataReady` only flips
-                // once the transactions are actually in.
+                // "No charges" empty state. The count is
+                // `visibleRowCount` — the SAME count the loaded
+                // list shows — and the ScrollView has the same
+                // fixed `listHeight`, so the sheet is the same
+                // height while loading and loaded (owner, Nov 26,
+                // 2026 — skeletons must fill the whole visible
+                // page, not a fixed six; and a row must never be
+                // cut midway). Loading mandate (owner, Nov 26,
+                // 2026): the gate is the data being ready, NOT
+                // `viewModel.isLoading` — a background refresh
+                // (tagging an expense runs one) used to blank
+                // this open picker back to skeletons mid-use, even
+                // though the cached list was still good.
+                // `calculatorDataReady` only flips once the
+                // transactions are actually in.
                 ScrollView {
                     VStack(spacing: 0) {
-                        ForEach(0..<SkeletonFill.rows(rowHeight: 61, above: 100), id: \.self) { _ in
+                        ForEach(0..<visibleRowCount, id: \.self) { _ in
                             skeletonRow
                             SheetActionDivider()
                         }
                     }
                 }
+                .frame(height: listHeight)
             } else if filteredCandidates.isEmpty {
                 FundsMuted(searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                     ? "No charges to tag right now — tag a transaction as an Expense from its Actions sheet."
@@ -870,32 +920,43 @@ public struct ExpenseTagPickerSheet: View {
                         // 30 rows at first; this reveals ALL the
                         // rest in one tap (the old +15-at-a-time
                         // took three taps to reach 50). Only while
-                        // more rows remain.
+                        // more rows remain. Owner, Nov 26, 2026:
+                        // load buttons are blue everywhere — the
+                        // same solid primary blue as the Transactions
+                        // and Activity Load More buttons, not a blue
+                        // text link.
                         if filteredCandidates.count > visibleCount {
-                            Button {
+                            Button("Load More (\(filteredCandidates.count - visibleCount) more)") {
                                 visibleCount = filteredCandidates.count
-                            } label: {
-                                Text("Load More (\(filteredCandidates.count - visibleCount) more)")
-                                    .font(.system(size: 15, weight: .semibold))
-                                    .foregroundStyle(DesignTokens.primary)
-                                    .frame(maxWidth: .infinity)
-                                    .padding(.vertical, 12)
-                                    .contentShape(Rectangle())
                             }
-                            .buttonStyle(.plain)
+                            .buttonStyle(PrimaryButtonStyle())
                             .accessibilityLabel("Load more charges")
                         }
                     }
                 }
+                // Fixed whole-row height (owner, Nov 26, 2026):
+                // exactly `visibleRowCount` whole rows are visible
+                // — the list scrolls inside the sheet for the
+                // rest, and no row is ever cut midway.
+                .frame(height: listHeight)
             }
         }
         .padding()
         .frame(width: horizontalSizeClass == .regular ? 600 : nil)
-        // Build 74 (owner, Nov 24, 2026 — popup sizing): a list
-        // of up to 50 charges opened at a 0.45 detent, showing
-        // ~3 rows — the list scrolls, but it opens cramped. Lists
-        // open at [.medium, .large] now.
-        .presentationDetents([.medium, .large])
+        // Whole-row sizing (owner, Nov 26, 2026 — a row was cut
+        // midway at the sheet's bottom edge): the sheet sizes to
+        // its content (`.presentationSizing(.fitted)`) instead of
+        // the [.medium, .large] detents — a detent is a fixed
+        // fraction of the screen, NOT aligned to a row boundary,
+        // so the bottom row landed half-visible. With fitted
+        // sizing + the fixed `listHeight` (a multiple of the
+        // 60.5pt row pitch), the sheet ends exactly on a whole
+        // row on every device and in both orientations. The
+        // bottom sheet itself is kept (see `visibleRowCount`).
+        // (Build 74's .medium/.large detents fixed a list that
+        // opened at a 0.45 detent showing ~3 rows; fitted keeps
+        // that fix and lands on whole rows.)
+        .presentationSizing(.fitted)
         .presentationDragIndicator(.visible)
         .presentationBackground(.white)
         // Loading mandate (owner, Nov 26, 2026): make sure the

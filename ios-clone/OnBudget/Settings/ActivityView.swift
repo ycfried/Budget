@@ -1,15 +1,19 @@
 // STAGE — Activity (live web v66, §13).
 //
 // General Activity: who did what, and when — not the transaction
-// list. Grouped by day (newest day first), each entry: small muted
-// dot, short bold title, one plain detail line (only when it adds
-// something the title does not say), muted "Actor · Mon D, h:mm AM"
-// — or just the time when the row has no real actor (system rows
-// never name a fake person). Every row reads as one plain sentence
-// (owner, Nov 14, 2026): no database words, no unexplained
-// numbers, no title repeating its subtitle, merchant names in
-// normal case, no colour coding on the dots — the type chips above
-// the list do the categorising.
+// list. Grouped by day (newest day first), each entry: a small
+// per-type icon on the left, coloured by meaning (red removals,
+// green positive money movements, blue neutral changes, grey
+// quiet housekeeping — palette only, colour in the icon only),
+// a short bold title, and ONE short structured fact line (only
+// when it adds something the title does not say) — the fact
+// first, never a sentence, merchants in ALL CAPS as stored,
+// facts joined with " · ", renames and money moves with " → ".
+// Then the muted "Actor · Mon D, h:mm AM" — or just the time
+// when the row has no real actor (system rows never name a fake
+// person). The title says the thing once; the detail never
+// restates it (owner, Nov 26, 2026: fact-first redesign; the
+// Nov 14, 2026 sentence format and muted dot are gone).
 //
 // Wiring (exact API calls):
 // - `PostgrestClient.auditLogPage(householdId:limit:from:to:)` —
@@ -26,6 +30,14 @@
 //   shortened display-side only (owner, Nov 12 2026): the title
 //   says the thing once, the detail adds only new information, a
 //   no-op "changed from $X to $X" never renders as a change.
+//   Since Nov 26, 2026 the detail is a fact-first line
+//   (`AuditFormatting.simplifyDetail`): the fact, not a sentence.
+// - Type-chip taps are local-only and instant (owner, Nov 26,
+//   2026): `selectType` re-derives the shown groups from the
+//   rows already in memory — no server re-fetch, so the chips
+//   no longer lag ~1s. The full server `load()` is still used
+//   for initial load, date-filter changes, Reset Filters,
+//   Load More, and refresh.
 // - Repeated weekly-processing rows collapse into one line with a
 //   count ("N weeks closed"); user actions never collapse.
 // - The date filter is the shared one-button + one-calendar range
@@ -59,6 +71,15 @@ final class ActivityViewModel: ObservableObject {
     /// present in the (date-filtered) log, in canonical order.
     @Published var selectedType: AuditFormatting.ActivityType?
     @Published var availableTypes: [AuditFormatting.ActivityType] = []
+
+    /// The rows `load()` last fetched, kept so a type-chip tap can
+    /// re-derive the shown list locally with no network (owner,
+    /// Nov 26 2026: the chips lagged ~1s because `selectType`
+    /// re-fetched the whole log on every tap). `load()` stores the
+    /// rows here, then calls `applyTypeFilter()`; chip taps call
+    /// only `applyTypeFilter()`.
+    private var loadedByDay: [String: [AuditDisplayEntry]] = [:]
+    private var loadedDayOrder: [String] = []
 
     private let context: SettingsContext
     let filter: HistoryFilterState
@@ -113,9 +134,12 @@ final class ActivityViewModel: ObservableObject {
                 let day = OnBudgetKit.MoneyFormat.newYorkDayString(row.createdAt) ?? "Unknown date"
                 let entry = AuditDisplayEntry(
                     action: AuditFormatting.formatAction(row.action),
-                    // Build 68 (item 16): short, plain wording —
-                    // the surplus-paid detail is shortened here.
-                    detail: shortenActivityDetail(AuditFormatting.formatDetail(row.detail)),
+                    // `formatDetail` (via `simplifyDetail` in
+                    // OnBudgetKit) already renders the fact-first
+                    // line — e.g. surplus paid toward debt reads
+                    // "$179.99 → Carried Debt · Week of Nov 8,
+                    // 2026" (owner, Nov 26, 2026).
+                    detail: AuditFormatting.formatDetail(row.detail),
                     actor: AuditFormatting.formatActor(row.actorName),
                     time: OnBudgetKit.MoneyFormat.fmtDateTime(row.createdAt)
                 )
@@ -138,32 +162,59 @@ final class ActivityViewModel: ObservableObject {
             }
             // The type filter combines with the date filter (both
             // apply together); "All" (nil) shows everything.
-            let shownByDay: [String: [AuditDisplayEntry]]
-            if let type = selectedType {
-                shownByDay = byDay.mapValues { $0.filter { $0.type == type } }
-            } else {
-                shownByDay = byDay
-            }
-            filter.auditShown = shownByDay.values.flatMap { $0 }.count
+            // Keep the fetched rows so a type-chip tap can re-derive
+            // the shown list locally with no network (see
+            // `applyTypeFilter`).
+            loadedByDay = byDay
+            loadedDayOrder = dayOrder
             filter.auditTotal = total
-            groups = dayOrder.compactMap { day in
-                // Build 68 (item 16): collapse repeated IDENTICAL
-                // system entries inside one day — the week is
-                // recomputed/closed repeatedly and each pass re-logs
-                // the same event, so "Surplus Paid Toward Debt —
-                // Surplus $179.99 for week Nov 8, 2026…" appeared
-                // SEVEN times on Nov 23. Display each event once.
-                // Only actor-less (system) rows collapse: two
-                // identical user actions are two real actions and
-                // must both stay.
-                let entries = dedupeIdenticalSystemEntries(AuditFormatting.groupDayActivity(shownByDay[day] ?? []))
-                guard !entries.isEmpty else { return nil }
-                return ActivityDayGroup(day: day, entries: entries)
-            }
+            applyTypeFilter()
             loadError = nil
         } catch {
             loadError = "Could not load history. Try again."
             hasMore = false
+        }
+    }
+
+    /// Re-derive the shown groups from the rows `load()` already
+    /// fetched, applying only the type filter — LOCAL-ONLY, no
+    /// network. This is what a type-chip tap runs, so the chip
+    /// highlight and the filtered list update in the same frame as
+    /// the tap (owner, Nov 26 2026: the chips lagged ~1s because
+    /// `selectType` re-fetched the whole log on every tap; the
+    /// re-fetch bought nothing — the type filter was already
+    /// client-side inside `load()`). The full server `load()` is
+    /// still used for initial load, date-filter changes, Reset
+    /// Filters, Load More, and refresh — each of those stores fresh
+    /// rows first, then calls this. The chips themselves are
+    /// derived from the date-filtered rows BEFORE the type filter
+    /// applies, so picking a chip never shrinks the chips; "All"
+    /// (nil) shows everything; Load More fetches more rows and
+    /// re-applies the type filter locally; `hasMore` is set by
+    /// `load()` and is unchanged by a type tap.
+    func applyTypeFilter() {
+        // The type filter combines with the date filter (both
+        // apply together); "All" (nil) shows everything.
+        let shownByDay: [String: [AuditDisplayEntry]]
+        if let type = selectedType {
+            shownByDay = loadedByDay.mapValues { $0.filter { $0.type == type } }
+        } else {
+            shownByDay = loadedByDay
+        }
+        filter.auditShown = shownByDay.values.flatMap { $0 }.count
+        groups = loadedDayOrder.compactMap { day in
+            // Build 68 (item 16): collapse repeated IDENTICAL
+            // system entries inside one day — the week is
+            // recomputed/closed repeatedly and each pass re-logs
+            // the same event, so "Surplus Paid Toward Debt —
+            // Surplus $179.99 for week Nov 8, 2026…" appeared
+            // SEVEN times on Nov 23. Display each event once.
+            // Only actor-less (system) rows collapse: two
+            // identical user actions are two real actions and
+            // must both stay.
+            let entries = dedupeIdenticalSystemEntries(AuditFormatting.groupDayActivity(shownByDay[day] ?? []))
+            guard !entries.isEmpty else { return nil }
+            return ActivityDayGroup(day: day, entries: entries)
         }
     }
 
@@ -193,26 +244,6 @@ final class ActivityViewModel: ObservableObject {
         return output
     }
 
-    /// Build 68 (item 16): shorten the verbose surplus-paid
-    /// detail at display time — "Surplus $179.99 for week Nov 8,
-    /// 2026 paid toward the carried debt before the remainder
-    /// became surplus." becomes "$179.99 to the carried debt ·
-    /// Week of Nov 8, 2026." Display-only; the stored row is
-    /// untouched. The proper home for this rule is
-    /// `AuditFormatting.simplifyDetail` in OnBudgetKit (outside
-    /// this build's files) — flagged as a follow-up in the
-    /// build 68 report.
-    private func shortenActivityDetail(_ detail: String) -> String {
-        let pattern = #"^Surplus (\$[\d,]+\.\d{2}) for week (.+?) paid toward the carried debt before the remainder became surplus\.$"#
-        guard let regex = try? NSRegularExpression(pattern: pattern),
-              let match = regex.firstMatch(in: detail, range: NSRange(detail.startIndex..., in: detail)),
-              match.numberOfRanges == 3,
-              let amountRange = Range(match.range(at: 1), in: detail),
-              let weekRange = Range(match.range(at: 2), in: detail)
-        else { return detail }
-        return "\(detail[amountRange]) to the carried debt · Week of \(detail[weekRange])."
-    }
-
     func loadMore() async {
         auditLimit += 50
         await load()
@@ -235,9 +266,12 @@ final class ActivityViewModel: ObservableObject {
 
     /// A type chip is single-select and applies on tap (no Apply
     /// step); it combines with the date filter, which stays as is.
-    func selectType(_ type: AuditFormatting.ActivityType?) async {
+    /// LOCAL-ONLY: re-derives the shown list from the rows already
+    /// in memory — no server fetch, so the tap is instant (owner,
+    /// Nov 26 2026: the chips lagged ~1s on the old re-fetch).
+    func selectType(_ type: AuditFormatting.ActivityType?) {
         selectedType = type
-        await load()
+        applyTypeFilter()
     }
 
     /// Reset Filters clears BOTH filters (owner, Nov 12 2026): the
@@ -306,14 +340,11 @@ struct ActivityView: View {
                     ForEach(viewModel.groups) { group in
                         daySection(group)
                     }
-                    if !viewModel.filter.isActive && viewModel.hasMore {
-                        MutedLine(text: "More entries exist — tap Load more below.")
-                    }
                     if viewModel.hasMore {
                         Button("Load More Activity") {
                             Task { await viewModel.loadMore() }
                         }
-                        .buttonStyle(TertiaryButtonStyle())
+                        .buttonStyle(PrimaryButtonStyle())
                     }
                 }
             }
@@ -380,11 +411,11 @@ struct ActivityView: View {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 8) {
                     typeChip(label: "All", selected: viewModel.selectedType == nil) {
-                        Task { await viewModel.selectType(nil) }
+                        viewModel.selectType(nil)
                     }
                     ForEach(viewModel.availableTypes, id: \.self) { type in
                         typeChip(label: type.label, selected: viewModel.selectedType == type) {
-                            Task { await viewModel.selectType(type) }
+                            viewModel.selectType(type)
                         }
                     }
                 }
@@ -421,16 +452,90 @@ struct ActivityView: View {
         }
     }
 
+    /// Per-type icon + colour for the redesigned rows (owner, Nov 26,
+    /// 2026: coloured icons, palette only, colour by meaning).
+    /// Red (`errorText` #dc2626) = removals / destructive things.
+    /// Green (`charity` #16a34a) = positive money movements
+    /// (surplus, giving, saving). Blue (`primary` #2f6bff) =
+    /// neutral changes. Grey (`muted` #6b7280) = quiet housekeeping.
+    /// The colour lives in the icon only. Keyed on the translated
+    /// action; an unknown action falls back to its type bucket,
+    /// then to a grey info icon. The four transaction colours are
+    /// untouched — these are the same palette, used by meaning.
+    private func activityIcon(for entry: AuditDisplayEntry) -> (name: String, color: Color) {
+        switch entry.action {
+        case "Base allowance changed": return ("dollarsign.circle", DesignTokens.primary)
+        case "Carried debt cleared": return ("checkmark.circle", DesignTokens.charity)
+        case "Charity cash gift recorded": return ("heart.fill", DesignTokens.charity)
+        case "Charity default rate changed": return ("percent", DesignTokens.primary)
+        case "Charity gift recorded": return ("heart.fill", DesignTokens.charity)
+        case "Charity income auto-accrued", "Charity income corrected", "Charity income recorded":
+            return ("heart", DesignTokens.charity)
+        case "Charity income reversed": return ("arrow.uturn.backward.circle", DesignTokens.errorText)
+        case "Debt payment from Extra Fund": return ("arrow.down.circle", DesignTokens.charity)
+        case "Debt repayment rule changed": return ("slider.horizontal.3", DesignTokens.primary)
+        case "Duplicate merged": return ("doc.on.doc", DesignTokens.primary)
+        case "Duplicate transaction excluded": return ("xmark.circle", DesignTokens.errorText)
+        case "Expense removed": return ("minus.circle", DesignTokens.errorText)
+        case "Extra Fund request approved": return ("checkmark.circle", DesignTokens.charity)
+        case "Extra Fund request created": return ("doc.text", DesignTokens.primary)
+        case "Extra Fund request declined": return ("xmark.circle", DesignTokens.errorText)
+        case "Extra Fund spending recorded": return ("banknote", DesignTokens.primary)
+        case "Extra Fund top-up recorded", "Extra Fund top-up recorded as pending":
+            return ("plus.circle", DesignTokens.charity)
+        case "Fund hidden from Home": return ("eye.slash", DesignTokens.muted)
+        case "Fund renamed": return ("pencil", DesignTokens.primary)
+        case "Fund shown on Home": return ("eye", DesignTokens.primary)
+        case "gmail_disconnected": return ("envelope", DesignTokens.muted)
+        case "Household created": return ("house", DesignTokens.primary)
+        case "Household joined": return ("person.badge.plus", DesignTokens.primary)
+        case "Member promoted": return ("person.badge.plus", DesignTokens.primary)
+        case "Member removed": return ("person.badge.minus", DesignTokens.errorText)
+        case "Merchant renamed": return ("pencil", DesignTokens.primary)
+        case "Refund re-linked": return ("link", DesignTokens.primary)
+        case "Surplus paid toward debt": return ("arrow.down.circle", DesignTokens.charity)
+        case "Surplus released": return ("arrow.up.circle", DesignTokens.charity)
+        case "Transaction added by hand": return ("plus.circle", DesignTokens.primary)
+        case "Transaction deleted": return ("trash.fill", DesignTokens.errorText)
+        case "Transaction excluded": return ("xmark.circle", DesignTokens.errorText)
+        case "Transaction marked as charity gift": return ("heart.fill", DesignTokens.charity)
+        case "Transaction moved to trash": return ("trash", DesignTokens.errorText)
+        case "Transaction reclassified": return ("arrow.left.arrow.right", DesignTokens.primary)
+        case "Transaction restored", "Transaction restored (one-off repair)":
+            return ("arrow.uturn.backward.circle", DesignTokens.charity)
+        case "Transaction tagged as expense": return ("tag", DesignTokens.primary)
+        case "Temporary increase added": return ("arrow.up.circle", DesignTokens.primary)
+        case "Weekly allowance set": return ("dollarsign.circle", DesignTokens.primary)
+        case "Weeks processed": return ("calendar", DesignTokens.primary)
+        case "CSV import": return ("square.and.arrow.down", DesignTokens.primary)
+        default:
+            switch entry.type {
+            case .weekCloses: return ("calendar", DesignTokens.primary)
+            case .members: return ("person", DesignTokens.primary)
+            case .allowance: return ("dollarsign.circle", DesignTokens.primary)
+            case .charity: return ("heart", DesignTokens.charity)
+            case .duplicates: return ("doc.on.doc", DesignTokens.primary)
+            case .trash: return ("trash", DesignTokens.errorText)
+            case .other: return ("info.circle", DesignTokens.muted)
+            }
+        }
+    }
+
     private func activityRow(_ entry: AuditDisplayEntry) -> some View {
         HStack(alignment: .top, spacing: 10) {
-            // One muted dot for every row (owner, Nov 14, 2026):
-            // the green/blue/grey dots meant nothing without a
-            // legend, so the colour coding is gone — the type chips
-            // above the list do the categorising.
-            Circle()
-                .fill(DesignTokens.muted)
-                .frame(width: 10, height: 10)
-                .padding(.top, 6)
+            // One small per-type icon, coloured by meaning (owner,
+            // Nov 26, 2026): red removals, green positive money
+            // movements, blue neutral changes, grey quiet
+            // housekeeping. The colour lives in the icon only —
+            // titles and fact lines stay ink/muted. This replaces
+            // the Nov 14, 2026 muted dot (one dot for every row —
+            // the dots meant nothing without a legend); the icons
+            // ARE the legend now, one per type.
+            let icon = activityIcon(for: entry)
+            Image(systemName: icon.name)
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(icon.color)
+                .frame(width: 24, height: 24)
             VStack(alignment: .leading, spacing: 2) {
                 Text(AuditFormatting.activityTitle(action: entry.action, count: entry.count))
                     .font(.subheadline)

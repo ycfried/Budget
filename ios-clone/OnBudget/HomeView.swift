@@ -466,7 +466,7 @@ public final class HomeViewModel: ObservableObject {
         }
         if txError == nil {
             // The whole fetched page — the view takes the
-            // device-appropriate prefix (see recentRowCount).
+            // fitted prefix (see fittedRowCount).
             recent = .loaded(txRows)
             if let weekStart {
                 let weekRows = txRows.filter { AppDates.isInWeek($0.date, weekStart: weekStart) }
@@ -747,6 +747,28 @@ private struct TwoColumnHeightKey: PreferenceKey {
     }
 }
 
+/// The measured height of everything above the Recent list on
+/// Home (owner, Nov 26, 2026 — Home is NOT scrollable; the row
+/// count is fitted to the real layout, see fittedRowCount).
+/// Same pattern as TwoColumnHeightKey: the above content reports
+/// its height, the reduce takes the max.
+private struct HomeAboveHeightKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = max(value, nextValue())
+    }
+}
+
+/// The measured height of the Home viewport — the ScrollView's
+/// frame (owner, Nov 26, 2026 — see fittedRowCount). Same
+/// pattern: the ScrollView's background reports its frame height.
+private struct HomeViewportHeightKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = max(value, nextValue())
+    }
+}
+
 /// Compact fitted sheet on iPad, full-screen cover on iPhone
 /// (build 68, item 9): the Weekly and Tzedaka sheets rendered as
 /// full-screen covers on iPad — a full page with ~60% empty space
@@ -767,18 +789,27 @@ private struct TwoColumnHeightKey: PreferenceKey {
 private struct FittedSheetOnIPad<SheetContent: View>: ViewModifier {
     @Binding var isPresented: Bool
     var isIPad: Bool
+    /// Runs when the sheet/cover is fully dismissed (owner, Nov 26,
+    /// 2026 — the Tzedaka sheet lingered over the Transactions tab
+    /// because "Show Transactions" switched tabs while the sheet
+    /// was still animating away). The button sets a pending
+    /// navigation on AppState and dismisses; this onDismiss
+    /// consumes it (navigates) only once the sheet is gone. A
+    /// plain dismiss (swipe / X) leaves the pending flag nil, so
+    /// nothing navigates. Nil by default.
+    var onDismiss: (() -> Void)? = nil
     @ViewBuilder var sheetContent: () -> SheetContent
 
     func body(content: Content) -> some View {
         if isIPad {
-            content.sheet(isPresented: $isPresented) {
+            content.sheet(isPresented: $isPresented, onDismiss: onDismiss) {
                 sheetContent()
                     .presentationSizing(.fitted)
                     .presentationBackground(.white)
                     .presentationDragIndicator(.visible)
             }
         } else {
-            content.fullScreenCover(isPresented: $isPresented) {
+            content.fullScreenCover(isPresented: $isPresented, onDismiss: onDismiss) {
                 ScrollView {
                     sheetContent()
                 }
@@ -815,7 +846,7 @@ public struct HomeView: View {
     @StateObject private var pastWeeksToast = ToastState()
     @StateObject private var pastWeeksFilter = HistoryFilterState()
     @State private var showNotLoadedAlert = false
-    @State private var notLoadedAlertTitle = "Weekly Budget"
+    @State private var notLoadedAlertTitle = "Weekly Allowance"
     /// Build 68 (shared standard): the empty-week explainer lives
     /// behind a blue info icon, not inline in the hero — the full
     /// sentence cluttered the card. Tapping the icon reveals it.
@@ -827,21 +858,43 @@ public struct HomeView: View {
     /// icons were still too small on iPad). iPhone is untouched.
     private var isIPad: Bool { horizontalSizeClass == .regular }
 
-    /// Recent Transactions shown on Home (owner, Nov 26, 2026 —
-    /// each screen gets the right amount for its device): iPhone
-    /// keeps 6; iPad shows enough rows to fill the screen below
-    /// the cards and Past Weeks. A loaded row is 44pt tall in a
-    /// 10pt-spaced stack (54pt pitch) and the list starts ~520pt
-    /// down the iPad page (two-column cards + quiet rows + Past
-    /// Weeks + header) — so 13 rows on an 11" iPad, 12 on mini,
-    /// 16 on 12.9". The same count drives the loading skeleton,
-    /// so skeleton and content match exactly and nothing moves
-    /// when the rows land. The count is stable across rotation
-    /// (longest edge), so turning the iPad only re-slices the
-    /// already-loaded rows — no refetch.
-    private var recentRowCount: Int {
-        isIPad ? SkeletonFill.rows(rowHeight: 54, above: 520) : 6
+    /// Recent Transactions shown on Home — fitted to the REAL
+    /// layout (owner, Nov 26, 2026 — Home is NOT scrollable; it
+    /// shows exactly the rows that fit the screen, no more, no
+    /// less). The viewport height is the ScrollView's frame
+    /// (`homeViewportHeight`, via `HomeViewportHeightKey` — the
+    /// tab content area; the shell's top bar and page-select row
+    /// already took their space); the height above the list is
+    /// MEASURED from the real content (`homeAboveHeight`, via
+    /// `HomeAboveHeightKey` — gmail banner + hero/card tiers +
+    /// quiet rows + Past Weeks + the Recent header), never a
+    /// hardcoded guess. ONE count drives BOTH the skeleton and
+    /// the loaded rows, so they match exactly. A row is 44pt tall
+    /// in a 10pt-spaced stack (54pt pitch); the list is 54*N - 10
+    /// tall, and the content above/below it is 20 (top padding)
+    /// + above + 16 (gap) + 20 (bottom padding) = above + 56 —
+    /// so N = floor((viewport - above - 46) / 54), at least 3.
+    /// Until the first measurement lands, the old device count
+    /// stands (6 / iPad estimate). The count recomputes on
+    /// rotation and whenever the above content changes height
+    /// (e.g. the gmail banner appearing) — and rotating only
+    /// re-slices the already-loaded rows, no refetch. (The old
+    /// fixed 6 on iPhone left empty space on tall phones and
+    /// overflowed on short ones; the old iPad `above: 520` was a
+    /// guess at the above height.)
+    private var fittedRowCount: Int {
+        guard homeViewportHeight > 0, homeAboveHeight > 0 else {
+            return isIPad ? SkeletonFill.rows(rowHeight: 54, above: 520) : 6
+        }
+        return max(3, Int((homeViewportHeight - homeAboveHeight - 46) / 54))
     }
+
+    /// The measured height of the Home viewport (the ScrollView's
+    /// frame) and of everything above the Recent list (see
+    /// fittedRowCount). 0 until the first layout pass reports
+    /// them.
+    @State private var homeViewportHeight: CGFloat = 0
+    @State private var homeAboveHeight: CGFloat = 0
 
     public init(appState: AppViewModel, householdId: UUID) {
         self.appState = appState
@@ -873,63 +926,24 @@ public struct HomeView: View {
             // 16pt. Not 24pt — the owner said 24pt read as
             // "extra white space" (Nov 16, 2026, build 40).
             VStack(alignment: .leading, spacing: 16) {
-                // Build 65: the page select lives in the shell
-                // (AppShellView) now — one control for all tabs,
-                // so Home no longer renders its own.
-                // Build 49 (owner, Nov 19, 2026): when a Gmail
-                // connection is in error state, email alerts have
-                // stopped — Home says so out loud at the top, with a
-                // tap that opens Settings where the Email Alerts card
-                // carries the Reconnect button. The banner only ever
-                // appears on a real error connection, never on a load
-                // failure, and it sits above both Home layouts.
-                if let gmailError = viewModel.gmailErrorMessage {
-                    Button {
-                        appState.showSettings = true
-                    } label: {
-                        HStack(alignment: .top, spacing: 8) {
-                            Text(gmailError)
-                                .font(.system(size: 14, weight: .semibold))
-                                .foregroundStyle(DesignTokens.errorText)
-                                .multilineTextAlignment(.leading)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                            Text("Settings")
-                                .font(.system(size: 14, weight: .semibold))
-                                .foregroundStyle(DesignTokens.primary)
-                        }
-                        .padding(12)
-                        .background(DesignTokens.errorBackground)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 12)
-                                .stroke(DesignTokens.errorBorder, lineWidth: 1)
-                        )
-                        .clipShape(RoundedRectangle(cornerRadius: 12))
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("\(gmailError) Open Settings to reconnect.")
-                }
-                // Build 64 (F-40 follow-up): Simple is the Home —
-                // the stored `homeLayout` is ignored, so nobody is
-                // stuck on Classic now that the Settings switch is
-                // gone (see the note above).
-                simpleContent
-                // Build 64 (F-18): Past Weeks as a VISIBLE
-                // destination from Home — it used to hide behind
-                // the Spending card's chevron (the Weekly sheet)
-                // and behind the Transactions "More" menu. A
-                // quiet white row, like the quiet fund rows, so
-                // closed weeks are one tap away from Home.
-                pastWeeksButton
-                // Recent Transactions sits on the same 16pt stack
-                // gap as the cards above it (owner, Nov 25, 2026 —
-                // a little more breathing room; was 12pt). No
-                // extra padding — the old 8pt top padding on top
-                // of the 16pt gap made 24pt, which read as extra
-                // white space (owner, Nov 16, 2026 — build 40).
-                recentSection
+                // Home fit (owner, Nov 26, 2026 — Home is NOT
+                // scrollable): the above content is one measured
+                // block (see aboveContent) and the rows are the
+                // fitted list (see fittedRowCount). The 16pt gap
+                // between them is the header-to-first-row gap
+                // (was 6pt header bottom padding + 10pt section
+                // spacing = 16pt).
+                aboveContent
+                    .background(aboveHeightProbe)
+                recentRows(count: fittedRowCount)
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 20)
+            .onPreferenceChange(HomeAboveHeightKey.self) { height in
+                if height > 0 && height != homeAboveHeight {
+                    homeAboveHeight = height
+                }
+            }
         }
         // Build 74 (tour): scroll the current step's target into
         // view on step change — the rate editor and the fund
@@ -939,6 +953,16 @@ public struct HomeView: View {
             scrollTourAnchorIntoView(proxy, tour: appState.tour, tab: .home)
         }
         .background(DesignTokens.background)
+        // Home fit (owner, Nov 26, 2026): measure the viewport
+        // (the ScrollView's frame — the tab content area) so the
+        // row count is fitted to the real layout (see
+        // fittedRowCount).
+        .background(viewportHeightProbe)
+        .onPreferenceChange(HomeViewportHeightKey.self) { height in
+            if height > 0 && height != homeViewportHeight {
+                homeViewportHeight = height
+            }
+        }
         // Build 36 (owner, Nov 16, 2026 — iPad): the tab reads as a
         // centered 900pt column on the regular size class (see
         // mainContentWidth), never stretched edge-to-edge.
@@ -980,7 +1004,15 @@ public struct HomeView: View {
         // popup instead — a full-screen cover left ~60% empty
         // space at the bottom. iPhone keeps the full-screen
         // cover; see FittedSheetOnIPad above.
-        .modifier(FittedSheetOnIPad(isPresented: $showWeeklySheet, isIPad: isIPad) {
+        .modifier(FittedSheetOnIPad(isPresented: $showWeeklySheet, isIPad: isIPad, onDismiss: {
+            // Owner, Nov 26, 2026: the sheet is fully gone now —
+            // only then switch tabs. A plain dismiss leaves the
+            // pending flag nil, so nothing navigates.
+            if case .week(let weekStart) = appState.pendingSheetShowTransactions {
+                appState.pendingSheetShowTransactions = nil
+                appState.showTransactionsForWeek(weekStart)
+            }
+        }) {
             if case .loaded(let result) = viewModel.week {
                 WeeklySheet(week: result, baseAllowanceCents: viewModel.allowanceCents, purchasesThisWeek: viewModel.purchasesThisWeek, appState: appState, onChanged: { Task { await viewModel.refresh() } })
                     // iPad width (owner, Nov 12 2026): WeeklySheet
@@ -998,7 +1030,14 @@ public struct HomeView: View {
         // week start its transactions button routes to); otherwise
         // the card tap shows the not-loaded alert instead (see
         // simpleFundCard).
-        .modifier(FittedSheetOnIPad(isPresented: $showTzedakaSheet, isIPad: isIPad) {
+        .modifier(FittedSheetOnIPad(isPresented: $showTzedakaSheet, isIPad: isIPad, onDismiss: {
+            // Owner, Nov 26, 2026: the sheet is fully gone now —
+            // only then switch tabs (see the Weekly sheet above).
+            if case .tzedaka = appState.pendingSheetShowTransactions {
+                appState.pendingSheetShowTransactions = nil
+                appState.showTzedakaTransactions()
+            }
+        }) {
             if case .loaded(let summary) = viewModel.charity,
                case .loaded(let result) = viewModel.week {
                 TzedakaSheet(summary: summary, appState: appState, onChanged: { Task { await viewModel.refresh() } })
@@ -1017,7 +1056,7 @@ public struct HomeView: View {
         .alert(notLoadedAlertTitle, isPresented: $showNotLoadedAlert) {
             Button("Close", role: .cancel) {}
         } message: {
-            Text("\(notLoadedAlertTitle == "Weekly Budget" ? "Weekly numbers" : "\(notLoadedAlertTitle) balances") are not loaded yet. Try again in a moment.")
+            Text("\(notLoadedAlertTitle == "Weekly Allowance" ? "Weekly numbers" : "\(notLoadedAlertTitle) balances") are not loaded yet. Try again in a moment.")
         }
     }
 
@@ -1723,7 +1762,7 @@ private struct HomeCardSkeletonBody: View {
                 amountSize: heroAmountSize,
                 amountAccessibilityIdentifier: "home.heroAmount",
                 amountAccessibilityLabel: result.availableCents < 0
-                    ? "\(FundSectionID.spending.displayName(customNames: appState.fundNames)), over budget by \(MoneyFormat.string(cents: -result.availableCents)), show breakdown"
+                    ? "\(FundSectionID.spending.displayName(customNames: appState.fundNames)), over allowance by \(MoneyFormat.string(cents: -result.availableCents)), show breakdown"
                     : "\(FundSectionID.spending.displayName(customNames: appState.fundNames)), \(MoneyFormat.string(cents: result.availableCents)) left this week, show breakdown",
                 donut: {
                     spendingDonut(fraction: fraction, overBudget: overBudget, size: heroDonutSize, showUsedLabel: true)
@@ -1773,7 +1812,7 @@ private struct HomeCardSkeletonBody: View {
                         .accessibilityIdentifier("home.heroAmount")
                         .accessibilityLabel(
                             result.availableCents < 0
-                                ? "\(FundSectionID.spending.displayName(customNames: appState.fundNames)), over budget by \(MoneyFormat.string(cents: -result.availableCents)), show breakdown"
+                                ? "\(FundSectionID.spending.displayName(customNames: appState.fundNames)), over allowance by \(MoneyFormat.string(cents: -result.availableCents)), show breakdown"
                                 : "\(FundSectionID.spending.displayName(customNames: appState.fundNames)), \(MoneyFormat.string(cents: result.availableCents)) left this week, show breakdown"
                         )
                     Spacer()
@@ -1846,14 +1885,14 @@ private struct HomeCardSkeletonBody: View {
         }
         .frame(width: size, height: size)
         .accessibilityIdentifier("home.heroDonut")
-        .accessibilityLabel("\(percent) percent of the weekly budget used")
+        .accessibilityLabel("\(percent) percent of the weekly allowance used")
     }
 
     private func usedPercentText(result: WeekResult, capacity: Int) -> String {
         if result.chargesCents == 0 { return "0% used" }
-        if capacity <= 0 { return "Over budget" }
+        if capacity <= 0 { return "Over allowance" }
         let percent = Int((Double(result.chargesCents) / Double(capacity) * 100).rounded())
-        return percent > 100 ? "Over budget" : "\(percent)% used"
+        return percent > 100 ? "Over allowance" : "\(percent)% used"
     }
 
     // MARK: Simpler Home — fund card + quiet rows
@@ -2129,7 +2168,7 @@ private struct HomeCardSkeletonBody: View {
                     if case .loaded = viewModel.week {
                         showTzedakaSheet = true
                     } else {
-                        notLoadedAlertTitle = "Weekly Budget"
+                        notLoadedAlertTitle = "Weekly Allowance"
                         showNotLoadedAlert = true
                     }
                 case .loading, .failed:
@@ -2887,63 +2926,156 @@ private struct HomeCardSkeletonBody: View {
 
     // MARK: Recent transactions
 
-    private var recentSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Text("Recent Transactions")
-                    .font(.system(size: 22, weight: .bold))
-                Spacer()
-                Button("See All") { appState.showAllTransactions() }
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(DesignTokens.primary)
+    // MARK: Recent transactions — fitted, not scrollable
+    //
+    // Home fit (owner, Nov 26, 2026 — Home is NOT scrollable):
+    // the page is split into `aboveContent` (everything above
+    // the rows — measured, see HomeAboveHeightKey) and
+    // `recentRows` (the fitted list, see fittedRowCount). The
+    // 16pt gap between them is the header-to-first-row gap.
+
+    /// Everything above the Recent list, as one measured block:
+    /// the gmail error banner (when present), the hero/card tiers
+    /// + quiet rows, Past Weeks, and the Recent header. Its
+    /// height is reported via `HomeAboveHeightKey` (see
+    /// aboveHeightProbe) and drives the fitted row count.
+    private var aboveContent: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            // Build 65: the page select lives in the shell
+            // (AppShellView) now — one control for all tabs,
+            // so Home no longer renders its own.
+            // Build 49 (owner, Nov 19, 2026): when a Gmail
+            // connection is in error state, email alerts have
+            // stopped — Home says so out loud at the top, with a
+            // tap that opens Settings where the Email Alerts card
+            // carries the Reconnect button. The banner only ever
+            // appears on a real error connection, never on a load
+            // failure, and it sits above both Home layouts.
+            if let gmailError = viewModel.gmailErrorMessage {
+                Button {
+                    appState.showSettings = true
+                } label: {
+                    HStack(alignment: .top, spacing: 8) {
+                        Text(gmailError)
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundStyle(DesignTokens.errorText)
+                            .multilineTextAlignment(.leading)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        Text("Settings")
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundStyle(DesignTokens.primary)
+                    }
+                    .padding(12)
+                    .background(DesignTokens.errorBackground)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 12)
+                            .stroke(DesignTokens.errorBorder, lineWidth: 1)
+                    )
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("\(gmailError) Open Settings to reconnect.")
             }
-            // Build 36 (owner, Nov 16, 2026 — Home screenshot): the
-            // header sat almost on top of the first transaction row.
-            // 6pt extra under the header only, so the header-to-first
-            // -row gap is 16pt while the rows stay 10pt apart and
-            // everything above the header is untouched.
-            .padding(.bottom, 6)
-            switch viewModel.recent {
-            case .loading:
-                // Shimmer skeletons shaped like the loaded rows —
-                // no spinner, no "Loading…" line (owner loading
-                // language, Nov 12, 2026). The same adaptive count
-                // as the loaded rows (owner, Nov 26, 2026 — each
-                // screen gets the right amount for its device), so
-                // skeleton and content match exactly and the page
-                // never shrinks or grows when the rows land. (The
-                // old fixed 10 came from Nov 15, 2026, when three
-                // rows left empty white space below while loading.)
-                VStack(spacing: 12) {
-                    ForEach(0..<recentRowCount, id: \.self) { _ in TransactionRowSkeleton() }
-                }
-                .padding(.vertical, 12)
-                .accessibilityLabel("Loading recent transactions")
-            case .failed(let error):
-                if error == .sessionExpired {
-                    ErrorBox("Your sign-in expired — sign in again to see transactions.")
-                    Button("Sign In Again") { appState.showSessionExpired() }
-                        .buttonStyle(PrimaryButtonStyle())
-                } else {
-                    ErrorBox("Could not load recent transactions.")
-                    Button("Try Again") { Task { await viewModel.refresh() } }
-                        .buttonStyle(TertiaryButtonStyle())
-                }
-            case .loaded(let rows):
-                if rows.isEmpty {
-                    Text("No transactions yet.")
-                        .font(.system(size: 15))
-                        .foregroundStyle(Color(hex: "#6b7280"))
-                } else {
-                    // The device-appropriate prefix (owner, Nov 26,
-                    // 2026): the view model keeps the whole fetched
-                    // page, so rotating the iPad re-slices the
-                    // already-loaded rows — no refetch.
-                    ForEach(Array(rows.prefix(recentRowCount))) { row in
+            // Build 64 (F-40 follow-up): Simple is the Home —
+            // the stored `homeLayout` is ignored, so nobody is
+            // stuck on Classic now that the Settings switch is
+            // gone (see the note above).
+            simpleContent
+            // Build 64 (F-18): Past Weeks as a VISIBLE
+            // destination from Home — it used to hide behind
+            // the Spending card's chevron (the Weekly sheet)
+            // and behind the Transactions "More" menu. A
+            // quiet white row, like the quiet fund rows, so
+            // closed weeks are one tap away from Home.
+            pastWeeksButton
+            recentHeader
+        }
+    }
+
+    /// The "Recent Transactions" header (title + See All). Lives
+    /// in `aboveContent` so its height is part of the measured
+    /// above height. No bottom padding — the outer 16pt gap to
+    /// the rows IS the header-to-first-row gap (was 6pt bottom
+    /// padding + 10pt section spacing = 16pt; Build 36, Nov 16,
+    /// 2026 — the header sat almost on top of the first row).
+    private var recentHeader: some View {
+        HStack {
+            Text("Recent Transactions")
+                .font(.system(size: 22, weight: .bold))
+            Spacer()
+            Button("See All") { appState.showAllTransactions() }
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(DesignTokens.primary)
+        }
+    }
+
+    /// The Recent row list: skeletons while loading, the error
+    /// box on failure, the loaded rows (exactly `count`), or the
+    /// empty line. `count` is the fitted count (see
+    /// fittedRowCount) — ONE count for skeleton and loaded, so
+    /// they match exactly and the page never shrinks or grows
+    /// when the rows land. Both lists use a 10pt-spaced stack of
+    /// 44pt rows (54pt pitch), so skeleton and loaded occupy
+    /// exactly the same height. (The old fixed 10 came from
+    /// Nov 15, 2026, when three rows left empty white space
+    /// below while loading.)
+    @ViewBuilder
+    private func recentRows(count: Int) -> some View {
+        switch viewModel.recent {
+        case .loading:
+            // Shimmer skeletons shaped like the loaded rows —
+            // no spinner, no "Loading…" line (owner loading
+            // language, Nov 12, 2026).
+            VStack(alignment: .leading, spacing: 10) {
+                ForEach(0..<count, id: \.self) { _ in TransactionRowSkeleton() }
+            }
+            .accessibilityLabel("Loading recent transactions")
+        case .failed(let error):
+            if error == .sessionExpired {
+                ErrorBox("Your sign-in expired — sign in again to see transactions.")
+                Button("Sign In Again") { appState.showSessionExpired() }
+                    .buttonStyle(PrimaryButtonStyle())
+            } else {
+                ErrorBox("Could not load recent transactions.")
+                Button("Try Again") { Task { await viewModel.refresh() } }
+                    .buttonStyle(TertiaryButtonStyle())
+            }
+        case .loaded(let rows):
+            if rows.isEmpty {
+                Text("No transactions yet.")
+                    .font(.system(size: 15))
+                    .foregroundStyle(Color(hex: "#6b7280"))
+            } else {
+                // The fitted prefix (owner, Nov 26, 2026): the
+                // view model keeps the whole fetched page, so
+                // rotating the iPad re-slices the already-loaded
+                // rows — no refetch.
+                VStack(alignment: .leading, spacing: 10) {
+                    ForEach(Array(rows.prefix(count))) { row in
                         recentRow(row)
                     }
                 }
             }
+        }
+    }
+
+    /// The height probe for the above content (see
+    /// HomeAboveHeightKey): the above block reports its own
+    /// height; the key's reduce takes the max. Same pattern as
+    /// twoColumnHeightProbe.
+    private var aboveHeightProbe: some View {
+        GeometryReader { proxy in
+            Color.clear.preference(key: HomeAboveHeightKey.self, value: proxy.size.height)
+        }
+    }
+
+    /// The height probe for the viewport (see
+    /// HomeViewportHeightKey): the ScrollView's background
+    /// reports the ScrollView's frame height — the tab content
+    /// area. Same pattern as aboveHeightProbe.
+    private var viewportHeightProbe: some View {
+        GeometryReader { proxy in
+            Color.clear.preference(key: HomeViewportHeightKey.self, value: proxy.size.height)
         }
     }
 
@@ -3176,6 +3308,11 @@ public struct WeeklySheet: View {
     /// Budget merged into the one Adjust This Week's Budget sheet.
     @State private var showAdjustWeeklyBudget = false
     @State private var showCalculator = false
+    /// Owner, Nov 26, 2026: "Set New Allowance" — the direct way
+    /// to set the ongoing/base weekly allowance from this popup
+    /// (Adjust is temporary only; the Calculator is a detour).
+    /// Opens SetBaseAllowanceSheet below.
+    @State private var showSetBaseAllowance = false
     /// The Funds view model the Adjust This Week's Budget form
     /// needs (see the note above the Weekly sheet section). Built
     /// lazily, once per presentation.
@@ -3228,7 +3365,7 @@ public struct WeeklySheet: View {
             // (it duplicated the dismiss). The Nov 12 single-
             // dismiss-control decision is superseded by the
             // back-button-on-every-popup rule.
-            SheetHeader(title: "Weekly Budget", onClose: { dismiss() })
+            SheetHeader(title: "Weekly Allowance", onClose: { dismiss() })
             // No explainer line here (owner, Nov 12 2026): the
             // "Pending transactions are included and marked." line
             // crowded the header. Pending state is already marked
@@ -3284,8 +3421,14 @@ public struct WeeklySheet: View {
                 weeklyActionsCard
             }
             Button("Show Transactions") {
+                // Owner, Nov 26, 2026: do NOT navigate here — the
+                // tab switch must wait until this sheet is fully
+                // dismissed, or the sheet lingers over the new tab
+                // (see AppState.pendingSheetShowTransactions).
+                // Record the intent, dismiss, and the sheet's
+                // onDismiss navigates once it is gone.
+                appState.pendingSheetShowTransactions = .week(week.weekStart)
                 dismiss()
-                appState.showTransactionsForWeek(week.weekStart)
             }
             .buttonStyle(PrimaryButtonStyle())
             .padding(.top, 8)
@@ -3342,6 +3485,18 @@ public struct WeeklySheet: View {
                     .presentationBackground(.white)
             }
         }
+        // Owner, Nov 26, 2026: "Set New Allowance" — the direct
+        // way to set the base weekly allowance going forward.
+        // Refreshes Home on dismiss (like the Adjust sheet), so
+        // the new Allowance figure shows at once. The toast
+        // ("Allowance saved.") rides the funds view model's toast
+        // forwarding above.
+        .sheet(isPresented: $showSetBaseAllowance, onDismiss: { onChanged?() }) {
+            if let fundsViewModel {
+                SetBaseAllowanceSheet(viewModel: fundsViewModel, currentBaseCents: baseAllowanceCents, onClose: { showSetBaseAllowance = false })
+                    .presentationBackground(.white)
+            }
+        }
         // Weekly Budget Calculator (FundsView.
         // WeeklyBudgetCalculatorSheet): the existing calculator,
         // reused as-is — local-only, suggestion-only, no server
@@ -3389,11 +3544,31 @@ public struct WeeklySheet: View {
                 SheetActionRow(
                     icon: "slider.horizontal.3",
                     iconColor: DesignTokens.primary,
-                    title: "Adjust This Week's Budget",
+                    title: "Adjust This Week's Allowance",
                     subtitle: "Add a one-time amount or set a new total"
                 ) {
                     if ensureFundsViewModel() != nil {
                         showAdjustWeeklyBudget = true
+                    } else {
+                        dismiss()
+                        appState.openSpendingFund()
+                    }
+                }
+                // Owner, Nov 26, 2026: "Set New Allowance" — the
+                // direct way to set the ongoing/base weekly
+                // allowance going forward (permanent, not a
+                // temporary override). Adjust above is temporary
+                // only; the Calculator below is a detour for just
+                // changing the amount. Admin-only, like Adjust.
+                SheetActionDivider()
+                SheetActionRow(
+                    icon: "dollarsign.circle",
+                    iconColor: DesignTokens.primary,
+                    title: "Set New Allowance",
+                    subtitle: "Change the weekly amount going forward"
+                ) {
+                    if ensureFundsViewModel() != nil {
+                        showSetBaseAllowance = true
                     } else {
                         dismiss()
                         appState.openSpendingFund()
@@ -3415,7 +3590,7 @@ public struct WeeklySheet: View {
                     // resolve.
                     glyph: AnyView(CalculatorGlyph(size: 20, color: DesignTokens.primary)),
                     iconColor: DesignTokens.primary,
-                    title: "Weekly Budget Calculator",
+                    title: "Weekly Allowance Calculator",
                     subtitle: "Work out the right weekly amount"
                 ) {
                     showCalculator = true
@@ -3443,6 +3618,92 @@ public struct WeeklySheet: View {
         // claustrophobic"): 10pt of air per row, so the numbers
         // card breathes.
         .padding(.vertical, 10)
+    }
+}
+
+/// Set the BASE weekly allowance, from the Weekly sheet (owner,
+/// Nov 26, 2026 — "Set New Allowance"): the direct way to set the
+/// ongoing weekly allowance going forward. "Adjust This Week's
+/// Allowance" is temporary only (a one-time add or a 1–4 week
+/// total) and the Calculator is a detour for just changing the
+/// amount. A $ field prefilled with the current base, a confirm
+/// (the same "Change Allowance" wording as the Funds page's
+/// editor), and the existing `setBaseAllowance` operation — the
+/// same RPC the Funds page uses. Admin-only (the row only renders
+/// for admins). The "Allowance saved." toast rides the funds view
+/// model's toast forwarding, and the sheet's onDismiss refreshes
+/// Home so the new Allowance figure shows at once.
+private struct SetBaseAllowanceSheet: View {
+    let viewModel: FundsViewModel
+    let currentBaseCents: Int?
+    let onClose: () -> Void
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @State private var amountText: String
+    @State private var showConfirm = false
+    @State private var error: String? = nil
+
+    init(viewModel: FundsViewModel, currentBaseCents: Int?, onClose: @escaping () -> Void) {
+        self.viewModel = viewModel
+        self.currentBaseCents = currentBaseCents
+        self.onClose = onClose
+        self._amountText = State(initialValue: currentBaseCents.map { String(format: "%.2f", Double($0) / 100) } ?? "")
+    }
+
+    /// The typed amount in cents, nil unless a valid amount above $0.
+    private var newCents: Int? {
+        guard let cents = MoneyFormat.parseDollarsStrict(amountText), cents > 0 else { return nil }
+        return cents
+    }
+
+    /// The confirm message, mirroring the Funds page's "Change
+    /// Allowance" dialog: old → new when there is a current base,
+    /// otherwise just the new amount. Same wording, same "does not
+    /// rewrite closed weeks" line.
+    private var confirmMessage: String {
+        if let old = currentBaseCents, let cents = newCents {
+            return "Change the weekly allowance from \(MoneyFormat.formatCents(old)) to \(MoneyFormat.formatCents(cents))?\nThis applies from the current week onward. It does not rewrite closed weeks."
+        } else if let cents = newCents {
+            return "Set the weekly allowance to \(MoneyFormat.formatCents(cents))?\nThis applies from the current week onward. It does not rewrite closed weeks."
+        }
+        return ""
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            SheetHeader(title: "Set New Allowance", onClose: onClose)
+            FundsMuted("This sets the weekly allowance going forward. It applies from the current week onward and does not rewrite closed weeks.")
+            DollarTextField(text: $amountText, placeholder: "0.00", maxWidth: .infinity, minHeight: 52)
+            if let error {
+                FundsErrorBox(error)
+            }
+            FundsPrimaryButton("Set Allowance", isBusy: viewModel.busyAction == "base-allowance") {
+                guard let cents = newCents else {
+                    error = "Enter a valid amount (empty is not 0)."
+                    return
+                }
+                if cents == currentBaseCents {
+                    error = "That is already the weekly allowance."
+                    return
+                }
+                error = nil
+                showConfirm = true
+            }
+            Spacer()
+        }
+        .padding(.horizontal, 24)
+        .padding(.top, 20)
+        .padding(.bottom, 24)
+        // iPad width, like the Weekly sheet: a fixed 600pt width
+        // in the regular size class, full-width on iPhone.
+        .frame(width: horizontalSizeClass == .regular ? 600 : nil)
+        .appConfirmDialog(isPresented: $showConfirm, title: "Change Allowance", message: confirmMessage, primaryTitle: "Change Allowance", secondaryTitle: "Keep Current") {
+            Task {
+                if let cents = newCents {
+                    await viewModel.setBaseAllowance(cents: cents)
+                    onClose()
+                }
+            }
+        }
     }
 }
 
@@ -3561,12 +3822,18 @@ public struct TzedakaSheet: View {
             // (the SheetHeader X + swipe dismiss), so Show
             // Transactions stands alone, full width.
             Button("Show Transactions") {
-                dismiss()
+                // Owner, Nov 26, 2026: do NOT navigate here — the
+                // tab switch must wait until this sheet is fully
+                // dismissed, or the sheet lingers over the new tab
+                // (see AppState.pendingSheetShowTransactions).
+                // Record the intent, dismiss, and the sheet's
+                // onDismiss navigates once it is gone.
                 // Build 65: the Tzedaka pre-filter — the list
                 // lands on the rows behind these numbers (gifts
                 // given + income rows that accrued charity, all
                 // time), via the pending-charity handoff.
-                appState.showTzedakaTransactions()
+                appState.pendingSheetShowTransactions = .tzedaka
+                dismiss()
             }
             .buttonStyle(PrimaryButtonStyle())
             .padding(.top, 8)

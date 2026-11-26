@@ -125,7 +125,7 @@ public enum TourStep: Int, CaseIterable {
         case .spendingNumber:
             return "This is what you have left to spend this week."
         case .weeklyBudget:
-            return "Tap this card to open the Weekly Budget — the week's numbers, and the Calculator that works them out."
+            return "Tap this card to open the Weekly Allowance — the week's numbers, and the Calculator that works them out."
         case .charityCard:
             return "This is set aside for giving — 10% of what comes in, automatically."
         case .fundsTab:
@@ -135,7 +135,7 @@ public enum TourStep: Int, CaseIterable {
         case .charityActions:
             return "Add money to giving here — or record a donation you gave off the card."
         case .calculator:
-            return "Tap Calculate to work out the weekly budget from your income and regular expenses."
+            return "Tap Calculate to work out the weekly allowance from your income and regular expenses."
         case .addButton:
             // Nov 26, 2026: + Add opens the options popup
             // (Purchase / Donation / Record Income — members see

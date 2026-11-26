@@ -314,6 +314,19 @@ public final class AppViewModel: ObservableObject {
     /// Transactions screen once consumed.
     @Published public var pendingTzedakaFilter = false
 
+    /// A "Show Transactions" tap from a sheet that must run AFTER
+    /// the sheet is fully dismissed (owner, Nov 26, 2026 — the
+    /// Tzedaka sheet lingered over the Transactions tab because
+    /// the tab switched while the sheet was still animating away).
+    /// The sheet sets this and dismisses; the sheet's onDismiss
+    /// (Home) consumes it — navigates, then clears it. Nil means
+    /// no pending navigation, so a plain dismiss (swipe / X)
+    /// does nothing. Read at dismissal time from this shared
+    /// object (not captured in a closure), so the value is always
+    /// current when onDismiss runs.
+    public enum SheetShowTransactions { case tzedaka, week(String) }
+    @Published public var pendingSheetShowTransactions: SheetShowTransactions? = nil
+
     /// Handoff from Home "See All" (audit H-P2-8): open Transactions
     /// with search/filters cleared first, like the recent-row jump.
     /// Cleared by the Transactions screen once consumed.

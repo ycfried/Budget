@@ -1797,7 +1797,7 @@ public final class FundsViewModel: ObservableObject {
     /// success only (like addToCharity).
     public func addToBudget(amountCents: Int) async -> Bool {
         var succeeded = false
-        await guarded("add-budget", title: "Could Not Top Up Budget") {
+        await guarded("add-budget", title: "Could Not Top Up Allowance") {
             let newTotalCents = try await context.client.rpcs.addToWeeklyBudget(
                 pHouseholdId: context.householdId,
                 pWeekStart: MoneyFormat.currentSundayNY(),
@@ -1812,7 +1812,7 @@ public final class FundsViewModel: ObservableObject {
                 "week_start": MoneyFormat.currentSundayNY(),
             ])
             succeeded = true
-            succeed("Added \(MoneyFormat.formatCents(amountCents)). This week's budget is now \(MoneyFormat.formatCents(newTotalCents)).")
+            succeed("Added \(MoneyFormat.formatCents(amountCents)). This week's allowance is now \(MoneyFormat.formatCents(newTotalCents)).")
             // Build 43, item 21: refresh() reloads the week's
             // top-ups (`loadWeeklyBudgetTopups`), so the Spending
             // breakdown's "Top Ups" line updates without a manual

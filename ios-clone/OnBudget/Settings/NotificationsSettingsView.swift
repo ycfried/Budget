@@ -124,11 +124,11 @@ struct NotificationsSettingsView: View {
     }
 
     private static let categories: [NotificationCategory] = [
-        NotificationCategory(title: "Budget & Weeks", toggles: [
+        NotificationCategory(title: "Allowance & Weeks", toggles: [
             ("Week Closed", \.weekClosed),
             ("New Week", \.newWeek),
-            ("Over Budget", \.overBudget),
-            ("Budget Increased", \.budgetIncreased),
+            ("Over Allowance", \.overBudget),
+            ("Allowance Increased", \.budgetIncreased),
         ]),
         NotificationCategory(title: "Money", toggles: [
             ("New Purchase", \.newPurchase),

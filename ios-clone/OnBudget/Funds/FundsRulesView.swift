@@ -847,7 +847,7 @@ public struct SpendingAllowanceSection: View {
         .alert(TitleCase.apply(to: "Weekly Allowance"), isPresented: $showingAllowanceInfo) {
             Button("OK") {}
         } message: {
-            Text("Your base spending budget each week. Top-ups add to it; a Temporary Allowance changes this week's total only.")
+            Text("Your base spending allowance each week. Top-ups add to it; a Temporary Allowance changes this week's total only.")
         }
     }
 
@@ -956,7 +956,7 @@ public struct SpendingAllowanceSection: View {
                 .id(TourAnchor.calculatorButton)
             }
             if isAdmin {
-                FundsInkOutlineButton("Adjust This Week's Budget", isLarge: true) {
+                FundsInkOutlineButton("Adjust This Week's Allowance", isLarge: true) {
                     onAdjustBudget()
                 }
             }
@@ -999,7 +999,7 @@ public struct AddToBudgetSheet: View {
 
     public var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            SheetHeader(title: "Top Up Budget", onClose: onClose)
+            SheetHeader(title: "Top Up Allowance", onClose: onClose)
             DollarTextField(text: $amountText, maxWidth: .infinity, minHeight: 48)
             if let addError {
                 FundsErrorBox(addError)
@@ -1131,7 +1131,7 @@ public struct AdjustWeeklyBudgetSheet: View {
     /// only; Set Total = new weekly total + how many weeks).
     public var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            SheetHeader(title: "Adjust This Week's Budget", onClose: onClose)
+            SheetHeader(title: "Adjust This Week's Allowance", onClose: onClose)
             // The current total, in a bordered summary card — so
             // the title and the total read as one planned header,
             // and the temporary total (with its red Remove) lives

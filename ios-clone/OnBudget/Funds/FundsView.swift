@@ -2091,14 +2091,14 @@ private struct DebtLedgerWeekDetailSheet: View {
                     .padding(.vertical, 10)
                 if let budget = budgetCents {
                     SheetActionDivider()
-                    FundsBreakdownRow("Weekly Budget", value: MoneyFormat.formatCents(budget))
+                    FundsBreakdownRow("Weekly Allowance", value: MoneyFormat.formatCents(budget))
                         .padding(.vertical, 10)
                     SheetActionDivider()
                     if overspendCents > 0 {
                         FundsBreakdownRow("Overspent", value: "+\(MoneyFormat.formatCents(overspendCents))")
                             .padding(.vertical, 10)
                     } else {
-                        FundsBreakdownRow("Under Budget By", value: MoneyFormat.formatCents(budget - netSpendingCents))
+                        FundsBreakdownRow("Under Allowance By", value: MoneyFormat.formatCents(budget - netSpendingCents))
                             .padding(.vertical, 10)
                     }
                 } else if overspendCents > 0 {
@@ -2414,7 +2414,7 @@ public struct WeeklyBudgetCalculatorSheet: View {
         // content, so both detents still size the sheet and the
         // inputs scroll within it.
         VStack(alignment: .leading, spacing: 16) {
-            SheetHeader(title: TitleCase.apply(to: "Weekly Budget Calculator"), onClose: onClose)
+            SheetHeader(title: TitleCase.apply(to: "Weekly Allowance Calculator"), onClose: onClose)
             WeeklyBudgetCalculatorContent(householdId: householdId, charityName: charityName, viewModel: viewModel)
         }
         .padding()
@@ -2704,14 +2704,21 @@ public struct WeeklyBudgetCalculatorContent: View {
                 Divider()
                 ScrollView {
                     VStack(alignment: .leading, spacing: 20) {
-                        // Build 77 (owner, Nov 25, 2026): Lifestyle +
-                        // Household Size sit at the TOP, above Expected
-                        // Income / Recurring Expenses — income and expenses
-                        // come later. Order only; values and behaviour
-                        // unchanged.
-                        lifestyleSection
-                        Divider()
-                        householdSizeSection
+                        // Owner, Nov 26, 2026 (Calculator): Household
+                        // Size + Lifestyle sit at the TOP in ONE card,
+                        // above Expected Income / Recurring Expenses —
+                        // income and expenses come later. Household
+                        // Size above Lifestyle, no separator line
+                        // between them inside the card (the card edge
+                        // is the separator). Order + container only;
+                        // values and behaviour unchanged. (Build 77
+                        // had them as two plain sections with a
+                        // Divider between; the owner then asked for
+                        // one card.)
+                        SettingsCard(title: nil) {
+                            householdSizeSection
+                            lifestyleSection
+                        }
                         Divider()
                         // Owner, Nov 26, 2026 (Calculator item 2):
                         // income and expenses read as two separate
@@ -2769,10 +2776,10 @@ public struct WeeklyBudgetCalculatorContent: View {
         .onChange(of: lifestyle) { _, _ in save() }
         .onChange(of: customHoldbackText) { _, _ in save() }
         .onChange(of: householdSize) { _, _ in save() }
-        .alert(TitleCase.apply(to: "Weekly Budget Calculator"), isPresented: $showFormulaInfo) {
+        .alert(TitleCase.apply(to: "Weekly Allowance Calculator"), isPresented: $showFormulaInfo) {
             Button("OK") {}
         } message: {
-            Text("Monthly income, minus expected charity, minus recurring charges, spread over the year's 52 weeks — then the lifestyle holdback is kept back. Household size shows the suggestion per person. This only suggests a weekly budget — your weekly allowance does not change. Income is shared with your household; the other entries save on this device automatically.")
+            Text("Monthly income, minus expected charity, minus recurring charges, spread over the year's 52 weeks — then the lifestyle holdback is kept back. Household size shows the suggestion per person. This only suggests a weekly allowance — your weekly allowance does not change. Income is shared with your household; the other entries save on this device automatically.")
         }
     }
 
@@ -2800,11 +2807,13 @@ public struct WeeklyBudgetCalculatorContent: View {
 
     /// The input-section skeletons (owner, Nov 26, 2026): the
     /// same sections, in the same order and spacing, as skeleton
-    /// blocks — Lifestyle, Household Size, then Expected Income
-    /// and Recurring Expenses each in their own card (mirroring
-    /// the loaded cards, Calculator item 2), then Expected
-    /// Tzedaka — so the sheet holds its shape until the data
-    /// lands and the whole Calculator reveals at once. The row
+    /// blocks — Household Size + Lifestyle together in ONE card
+    /// (Household Size block, then the Lifestyle header + picker,
+    /// no Divider between them — mirroring the loaded card),
+    /// then Expected Income and Recurring Expenses each in their
+    /// own card (mirroring the loaded cards, Calculator item 2),
+    /// then Expected Tzedaka — so the sheet holds its shape until
+    /// the data lands and the whole Calculator reveals at once. The row
     /// counts vary once loaded (one household has no income rows,
     /// another has five), so the skeleton carries enough rows per
     /// list to fill the visible page (owner, Nov 26, 2026 —
@@ -2816,12 +2825,18 @@ public struct WeeklyBudgetCalculatorContent: View {
     /// pitch).
     private var inputsSkeleton: some View {
         VStack(alignment: .leading, spacing: 20) {
-            VStack(alignment: .leading, spacing: 12) {
-                SkeletonBlock(width: 120, height: 22)
-                SkeletonBlock(height: 52)
+            // Owner, Nov 26, 2026: one card holding Household Size
+            // above Lifestyle, no Divider between them — the same
+            // structure as the loaded card. The blocks are 12pt
+            // apart, matching the loaded card's spacing.
+            SettingsCard(title: nil) {
+                VStack(alignment: .leading, spacing: 12) {
+                    SkeletonBlock(width: 200, height: 22)
+                    SkeletonBlock(width: 120, height: 22)
+                    SkeletonBlock(height: 52)
+                }
             }
             Divider()
-            SkeletonBlock(width: 200, height: 22)
             SettingsCard(title: nil) {
                 VStack(alignment: .leading, spacing: 12) {
                     SkeletonBlock(width: 160, height: 22)
@@ -2871,7 +2886,7 @@ public struct WeeklyBudgetCalculatorContent: View {
     private var suggestionBlock: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 8) {
-                Text("Suggested Weekly Budget")
+                Text("Suggested Weekly Allowance")
                     .font(.system(size: 17, weight: .bold))
                     .foregroundStyle(DesignTokens.ink)
                 Spacer()
@@ -2894,10 +2909,15 @@ public struct WeeklyBudgetCalculatorContent: View {
             }
             if hasItems {
                 // Clamped at $0 — never a negative suggested
-                // budget (build 69, owner Nov 24, 2026).
+                // budget (build 69, owner Nov 24, 2026). Owner,
+                // Nov 26, 2026 (approved): the amount is primary
+                // blue, the same treatment as the Available figure
+                // on the Home Spending card — so the answer stands
+                // out. The $0.00 / no-income case renders through
+                // this same text, so it is blue in every state.
                 Text(MoneyFormat.formatCents(max(0, suggestedWeeklyCents)))
                     .font(.system(size: 28, weight: .bold))
-                    .foregroundStyle(DesignTokens.ink)
+                    .foregroundStyle(DesignTokens.primary)
                 FundsMuted("About \(MoneyFormat.formatCents(max(0, perPersonCents))) per person each week, for a household of \(householdSize).")
                 // Build 67 (owner, Nov 23, 2026 — "so many words,
                 // so much clutter"): the two extra muted lines are
@@ -2926,7 +2946,7 @@ public struct WeeklyBudgetCalculatorContent: View {
             monthlyTotalCents: monthlyIncomeCents,
             onAdd: addIncomeItem,
             onRemove: removeIncomeItem,
-            infoMessage: "The monthly income the weekly budget is worked out from. Add each person's income here, and remove one with its trash.",
+            infoMessage: "The monthly income the weekly allowance is worked out from. Add each person's income here, and remove one with its trash.",
             showInfo: $showIncomeInfo
         )
     }
@@ -3359,7 +3379,24 @@ public struct WeeklyBudgetCalculatorContent: View {
     /// of monthly income (integer-cents compare) that preset is
     /// highlighted, not Custom; anything else is Custom. Never
     /// stored, so it can never go stale when the income changes.
+    /// Owner, Nov 26, 2026 (Custom fix): when the Custom field is
+    /// open — the user tapped Custom — the selection is Custom
+    /// even when the $ happens to equal a preset. Without this,
+    /// tapping Custom while the $ was exactly 20% left 20%
+    /// highlighted and Custom untappable (the tap set the field
+    /// open but the derived selection still returned .twenty).
+    /// The raw derivation without this override is
+    /// `derivedCharityPercentSelection`, used by the $ onChange
+    /// so typing a preset $ still closes the field.
     private var charityPercentSelection: CharityPercentPreset {
+        if showingCustomCharityPercent { return .custom }
+        return derivedCharityPercentSelection
+    }
+
+    /// The preset the $ equals, ignoring whether the Custom field
+    /// is open. Used by the $ onChange: typing a preset $ closes
+    /// the Custom field even while it is open.
+    private var derivedCharityPercentSelection: CharityPercentPreset {
         guard monthlyIncomeCents > 0,
               let cents = MoneyFormat.parseDollarsStrict(charityText) else { return .custom }
         if cents == charityCents(forPercent: 5) { return .five }
@@ -3455,8 +3492,11 @@ public struct WeeklyBudgetCalculatorContent: View {
         .onChange(of: charityText) { _, _ in
             // The $ was typed to a preset value (or a preset was
             // tapped): the Custom field's reason to stay open is
-            // gone — unless the user is typing in it.
-            if !isCustomCharityPercentFocused && charityPercentSelection != .custom {
+            // gone — unless the user is typing in it. Uses the raw
+            // derivation (not the selection, which returns Custom
+            // while the field is open) so a preset $ still closes
+            // the field even when Custom was just tapped open.
+            if !isCustomCharityPercentFocused && derivedCharityPercentSelection != .custom {
                 showingCustomCharityPercent = false
             }
         }
@@ -3528,7 +3568,7 @@ public struct WeeklyBudgetCalculatorContent: View {
         .alert("Lifestyle", isPresented: $showLifestyleInfo) {
             Button("OK") {}
         } message: {
-            Text("How much of your income is held back before working out the weekly budget. Min. holds back 10%, Regular 5%, Max. holds back nothing, and Custom is your own percent.")
+            Text("How much of your income is held back before working out the weekly allowance. Min. holds back 10%, Regular 5%, Max. holds back nothing, and Custom is your own percent.")
         }
     }
 
