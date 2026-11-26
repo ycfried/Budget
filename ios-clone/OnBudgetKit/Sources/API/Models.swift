@@ -1360,11 +1360,12 @@ public struct CharitySummary: Equatable {
     public let defaultRateBp: Int
     /// The part of Given that came from off-card cash gifts
     /// (Nov 26, 2026 — owner: Given $761.29 did not match the
-    /// Transactions Tzedaka filter total $1,010.96, and the gap
-    /// was exactly this $67.68 "Leftover from previous Ma'aser
-    /// Sheet" cash gift, which has no transaction row. The
-    /// breakdowns surface it so the two totals reconcile on
-    /// sight; Given itself is unchanged).
+    /// Transactions Tzedaka filter total $1,010.96. The relation
+    /// is: filter total = Given − $67.68 cash + $317.35 pending,
+    /// so the gap is $249.67, not $67.68. The $67.68 "Leftover
+    /// from previous Ma'aser Sheet" cash gift has no transaction
+    /// row. The breakdowns surface it so the two totals reconcile
+    /// on sight; Given itself is unchanged).
     public let cashGiftCents: Int
 
     /// Public memberwise init: the struct's stored properties are public

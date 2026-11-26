@@ -925,12 +925,13 @@ public struct FundsView: View {
                     // Nov 26, 2026 (owner — Given did not match
                     // the Transactions Tzedaka filter total): Given
                     // includes off-card cash gifts, which have no
-                    // transaction row, so the filter total is lower
-                    // by exactly that amount. Say so here, only
-                    // when there is an off-card gift — the numbers
-                    // themselves are unchanged.
+                    // transaction row, and the filter total counts
+                    // pending gifts too, so it is HIGHER than Given
+                    // (filter = Given − cash + Pending). Say so here,
+                    // only when there is an off-card gift — the
+                    // numbers themselves are unchanged.
                     if summary.cashGiftCents > 0 {
-                        Text("Given includes \(MoneyFormat.formatCents(summary.cashGiftCents)) given off-card, with no transaction row — that is why the Transactions list total is lower.")
+                        Text("Given includes \(MoneyFormat.formatCents(summary.cashGiftCents)) given off-card, with no transaction row — and the Transactions list total counts pending gifts too, so it is higher than Given.")
                             .font(.system(size: 13))
                             .foregroundStyle(DesignTokens.muted)
                     }
