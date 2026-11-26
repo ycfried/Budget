@@ -112,6 +112,17 @@ public struct AppShellView: View {
             // VStack moved. The content takes the remaining
             // height above the bar, so no row hides under it.
             selectedTabContent
+            // Tab-switch glitch (owner, Nov 26, 2026 — build
+            // 100): PageSelectControl carries `.animation(
+            // .easeInOut, value: selectedTab)` for the indicator
+            // glide, and that animation reached this switch
+            // through the shared @Published change, cross-fading
+            // the old tab out and the new tab in so both rendered
+            // at once. The switch itself is INSTANT — no animation
+            // on the content — while the indicator keeps its own
+            // glide (PageSelectControl's own `.animation` still
+            // applies inside its subtree).
+            .animation(nil, value: appState.selectedTab)
             pageSelectRow
         }
         // The walkthrough's coordinate space (build 48): every tour

@@ -432,9 +432,29 @@ public final class TransactionsViewModel {
     /// server-side in the client.
     public func load() async {
         loadTask?.cancel()
+        // Double-load flicker (owner, Nov 26, 2026 — build 100):
+        // every reload used to blank the already-loaded list back to
+        // skeletons, so the auto-sync that runs on entering
+        // Transactions (runSync's trailing load, after Plaid + Gmail)
+        // made the page show real data, flip back to skeletons for a
+        // second, then load again. A refresh of the SAME content
+        // (same mode, same filters) now keeps the loaded rows visible
+        // and swaps the new data in when it lands — the list never
+        // blanks. Only a first load (no data yet) sets .loading and
+        // shows the skeleton. A mode/filter CHANGE blanks explicitly
+        // at its call site (applyWeekFilter / applyTzedakaFilter /
+        // applyTransactionJump set .loading first), because there the
+        // old rows are the WRONG data, not a refresh of the same
+        // list. Same pattern as loadMore, which never blanks.
+        let isRefresh: Bool = {
+            if case .loaded = self.loadState { return true }
+            return false
+        }()
         let task = Task { [weak self] in
             guard let self else { return }
-            self.loadState = .loading
+            if !isRefresh {
+                self.loadState = .loading
+            }
             do {
                 if self.isWeekMode {
                     let fromDate = self.filters.fromDate
@@ -684,6 +704,11 @@ public final class TransactionsViewModel {
         filters.status = .spending
         filterChanged()
         isWeekMode = true
+        // Content change, not a refresh: the loaded rows are the
+        // full list, not this week — blank to the skeleton while
+        // the week's rows load (load() itself no longer blanks a
+        // loaded list; see there).
+        loadState = .loading
         await load()
     }
 
@@ -703,6 +728,11 @@ public final class TransactionsViewModel {
         filters.status = .tzedaka
         filterChanged()
         isTzedakaMode = true
+        // Content change, not a refresh: the loaded rows are the
+        // full list, not the gifts — blank to the skeleton while
+        // the gifts load (load() itself no longer blanks a loaded
+        // list; see there).
+        loadState = .loading
         await load()
     }
 
@@ -751,7 +781,12 @@ public final class TransactionsViewModel {
         // so load() takes the normal path — the most recent page
         // first). load()'s completion re-applies the pending jump,
         // so if the row turns up there the expansion is already
-        // set when this returns.
+        // set when this returns. Content change, not a refresh:
+        // the loaded rows may be a week's (clearSearchAndFilters
+        // only truncates them) — blank to the skeleton while the
+        // full list loads (load() itself no longer blanks a loaded
+        // list; see there).
+        loadState = .loading
         await load()
         if pendingJumpId == nil { return }
         // Still not found — it is older than the first page. Keep
