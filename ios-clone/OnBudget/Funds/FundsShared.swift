@@ -1048,18 +1048,16 @@ public struct FundsExpandableCard<Expanded: View>: View {
     /// default icon.
     public let iconName: String?
     /// Reorder mode (build 41 — owner, Nov 16, 2026): when true
-    /// the card shows ONLY the header strip + the amount (icon +
-    /// name + amount; the amount stays visible since Nov 25, 2026
-    /// (owner) — so the card still reads as a fund card while
-    /// reordering, not a thin strip), no detail, no progress bar,
-    /// no buttons, no expanded content. The chevron and pencil
-    /// hide too (the card does not expand or rename while
-    /// reordering); a three-line drag grip takes the chevron's
-    /// place, and the card moves by drag only (the up/down
-    /// arrows were removed Nov 25, 2026 — owner). False
-    /// everywhere else; exiting reorder mode returns the card
-    /// to its full size (the expanded state is untouched, so an
-    /// expanded card re-opens as it was).
+    /// the card shows the header strip + the amount, and a
+    /// three-line drag grip sits beside the chevron — the card
+    /// moves by drag. Owner, Nov 26, 2026: a tap still expands
+    /// the card in reorder mode (the expanded detail shows), so
+    /// the card is tappable from anywhere there too; only the
+    /// pencil and info icon hide (the card does not rename or
+    /// show its description while reordering). False everywhere
+    /// else; exiting reorder mode returns the card to its full
+    /// size (the expanded state is untouched, so an expanded
+    /// card re-opens as it was).
     public let isReorderMode: Bool
     public let accessibilityLabel: String
     public let onToggle: () -> Void
@@ -1138,7 +1136,7 @@ public struct FundsExpandableCard<Expanded: View>: View {
             // and the Nov 15, 2026 app-wide pass): the ENTIRE
             // header strip — icon, title, amount AND the chevron —
             // is the toggle. The chevron is only a visual hint,
-            // never the only place that responds. The header is a
+            // never the only place that responds. The card is a
             // tap gesture, NOT a Button: the pencil is a real Button
             // inside it, and a Button nested inside a Button never
             // fires (audit H-P1-3). A child Button wins over an
@@ -1147,21 +1145,10 @@ public struct FundsExpandableCard<Expanded: View>: View {
             // `.contentShape(Rectangle())` makes the empty space
             // between the glyphs respond too — without it only the
             // glyphs hit and the header feels chevron-only.
+            // Owner, Nov 26, 2026: the tap itself lives on the
+            // whole card now (see below) — the header and amount
+            // no longer carry their own tap gestures.
             headerStrip(pad: pad)
-                .contentShape(Rectangle())
-                .onTapGesture {
-                    // Owner, Nov 26, 2026: the header toggles in
-                    // reorder mode too — a tap expands the card, a
-                    // press-and-hold drag reorders it. The two do
-                    // not conflict: the drag (.onDrag on the card
-                    // container, FundsView) needs a press-and-hold
-                    // before it starts, so a quick tap never starts
-                    // a drag and a normal scroll never starts one
-                    // either.
-                    onToggle()
-                }
-                .accessibilityLabel(accessibilityLabel)
-                .accessibilityAddTraits(.isButton)
             // Amount body (build 50, owner Nov 20, 2026): NAME in
             // the header, AMOUNT in the box/card. The amount used
             // to sit in the header beside the name, so the two
@@ -1183,18 +1170,14 @@ public struct FundsExpandableCard<Expanded: View>: View {
             // "not so easily tappable". The pencil and info icon
             // are real Buttons inside the header, so they still
             // win over the tap gesture (their own actions); the
-            // expanded detail below keeps no gesture, so tapping
-            // an action inside it never collapses the card.
+            // expanded detail's buttons, toggle and fields win the
+            // same way, so tapping an action inside it never
+            // collapses the card — only a tap on plain card space
+            // does (the tap lives on the whole card now, see below).
             amountBody(pad: pad)
-                .contentShape(Rectangle())
-                .onTapGesture {
-                    // Owner, Nov 26, 2026: same as the header — the
-                    // amount toggles in reorder mode too (see above).
-                    onToggle()
-                }
             // Owner, Nov 26, 2026: the expanded body shows in
-            // reorder mode too — otherwise the tap above would
-            // fire and show nothing.
+            // reorder mode too — otherwise a tap would fire and
+            // show nothing.
             if isExpanded {
                 // White body (majority): the detail rows, editors
                 // and actions. Directly below the amount, no gap —
@@ -1256,6 +1239,28 @@ public struct FundsExpandableCard<Expanded: View>: View {
         // the card — the shared fundCardShadow, so the Funds cards
         // lift exactly like the Home cards.
         .fundCardShadow()
+        .contentShape(Rectangle())
+        // Whole-card tap target (owner, Nov 26, 2026 —
+        // "tappable from anywhere on the card"): the tap used to
+        // live on the header strip and the amount body
+        // separately. It is now on the whole card, the same
+        // pattern as the Home stat cards: header, amount and
+        // expanded detail all toggle. The pencil and info icon
+        // are real Buttons inside the header, so they still win
+        // over this tap gesture (their own actions); the expanded
+        // detail's buttons, toggle and fields win the same way,
+        // so tapping an action never collapses the card — only a
+        // tap on plain card space does. In reorder mode a tap
+        // still expands and a press-and-hold drag still reorders:
+        // the drag (.onDrag on the card container, FundsView)
+        // needs a press-and-hold before it starts, so a quick
+        // tap never starts a drag and a normal scroll never
+        // starts one either.
+        .onTapGesture {
+            onToggle()
+        }
+        .accessibilityLabel(accessibilityLabel)
+        .accessibilityAddTraits(.isButton)
         // Build 42 (owner, Nov 17, 2026 — fund descriptions
         // behind an info icon): tapping the ⓘ shows the fund's
         // one-line description as an alert, titled with the fund
