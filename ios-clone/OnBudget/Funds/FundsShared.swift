@@ -1150,10 +1150,15 @@ public struct FundsExpandableCard<Expanded: View>: View {
             headerStrip(pad: pad)
                 .contentShape(Rectangle())
                 .onTapGesture {
-                    // Reorder mode: the bar does not expand — the
-                    // drag grip moves it. Everywhere else the whole
-                    // header toggles the card.
-                    if !isReorderMode { onToggle() }
+                    // Owner, Nov 26, 2026: the header toggles in
+                    // reorder mode too — a tap expands the card, a
+                    // press-and-hold drag reorders it. The two do
+                    // not conflict: the drag (.onDrag on the card
+                    // container, FundsView) needs a press-and-hold
+                    // before it starts, so a quick tap never starts
+                    // a drag and a normal scroll never starts one
+                    // either.
+                    onToggle()
                 }
                 .accessibilityLabel(accessibilityLabel)
                 .accessibilityAddTraits(.isButton)
@@ -1183,12 +1188,14 @@ public struct FundsExpandableCard<Expanded: View>: View {
             amountBody(pad: pad)
                 .contentShape(Rectangle())
                 .onTapGesture {
-                    // Reorder mode: the amount shows but does not
-                    // toggle — the card does not expand while
-                    // reordering.
-                    if !isReorderMode { onToggle() }
+                    // Owner, Nov 26, 2026: same as the header — the
+                    // amount toggles in reorder mode too (see above).
+                    onToggle()
                 }
-            if isExpanded, !isReorderMode {
+            // Owner, Nov 26, 2026: the expanded body shows in
+            // reorder mode too — otherwise the tap above would
+            // fire and show nothing.
+            if isExpanded {
                 // White body (majority): the detail rows, editors
                 // and actions. Directly below the amount, no gap —
                 // part of the same card, not a separate block. The
@@ -1362,17 +1369,19 @@ public struct FundsExpandableCard<Expanded: View>: View {
                 .buttonStyle(.plain)
                 .accessibilityLabel("About \(TitleCase.apply(to: title))")
             }
-            // Chevron (build 41): hidden in reorder mode — the bar
-            // does not expand while reordering, so there is nothing
-            // to hint at.
-            if !isReorderMode {
-                // Build 74 (B11): SF Symbol chevron, not the "⌄"
-                // text glyph.
-                Image(systemName: "chevron.down")
-                    .font(.system(size: 15, weight: .bold))
-                    .foregroundStyle(hintColor)
-                    .rotationEffect(.degrees(isExpanded ? 180 : 0))
-            }
+            // Chevron (build 41): the expand hint — it rotates
+            // when the card is expanded. Owner, Nov 26, 2026: it
+            // shows in reorder mode too now that the card expands
+            // there (it used to be hidden — the bar did not expand
+            // while reordering, so there was nothing to hint at).
+            // It sits beside the drag grip: chevron = tap to
+            // expand, grip = drag to reorder.
+            // Build 74 (B11): SF Symbol chevron, not the "⌄"
+            // text glyph.
+            Image(systemName: "chevron.down")
+                .font(.system(size: 15, weight: .bold))
+                .foregroundStyle(hintColor)
+                .rotationEffect(.degrees(isExpanded ? 180 : 0))
             // Drag grip (owner, Nov 25, 2026): reorder mode only —
             // the standard three-line grip in the chevron's place,
             // so it is obvious the card can be dragged. The grip is

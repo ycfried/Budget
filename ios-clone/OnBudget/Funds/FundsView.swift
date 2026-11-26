@@ -1248,10 +1248,10 @@ public struct FundsView: View {
         // Build 44 (owner, Nov 18, 2026): the long-press entry into
         // reorder mode and the jiggle wobble are removed — the cards
         // never shift or tilt. The ONLY way into reorder mode is the
-        // Reorder button above the cards. A tap still expands the
-        // card outside reorder mode; while reordering, the header
-        // tap is a no-op (FundsExpandableCard), so nothing here
-        // needs to guard the tap.
+        // Reorder button above the cards. Owner, Nov 26, 2026: a tap
+        // expands the card in reorder mode too
+        // (FundsExpandableCard); only a press-and-hold drag
+        // reorders it, so nothing here needs to guard the tap.
         // The card being dragged fades a little so the user can see
         // which one is in their hand.
         .opacity(isRearranging && draggingId == id ? 0.55 : 1)
