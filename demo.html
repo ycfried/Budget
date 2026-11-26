@@ -3,245 +3,672 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#20392f">
-<title>Household Budget — Demo</title>
-<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#ffffff">
+<meta name="color-scheme" content="light">
+<meta name="description" content="STAGE — Spend, Track &amp; Give Easily. Try the interactive demo: Home, Transactions and Funds, with fake demo data. No sign-up, no bank connection.">
+<meta property="og:title" content="STAGE — Demo">
+<meta property="og:description" content="Spend, Track &amp; Give Easily. Tap through the app — Home, Transactions and Funds — with fake demo data. No sign-up.">
+<meta property="og:type" content="website">
+<meta property="og:image" content="icon-512.png">
+<title>STAGE — Demo</title>
 <link rel="icon" href="icon.svg" type="image/svg+xml">
-<link rel="apple-touch-icon" href="icon.svg">
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="default">
-<link rel="stylesheet" href="styles.css?v=2">
+<style>
+  :root {
+    --brand: #2f6bff;
+    --stage: #0288dd;
+    --ink: #0f172a;
+    --muted: #6b7280;
+    --body: #475569;
+    --income: #1d4ed8;
+    --bg: #f8fafc;
+    --card: #ffffff;
+    --border: #e5e7eb;
+    --track: #dbeafe;
+    --seg: #e8eaef;
+    --field: #eef0f4;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", Helvetica, Arial, sans-serif; background: #fff; color: var(--ink); line-height: 1.5; }
+  button { font-family: inherit; cursor: pointer; }
+  a { color: var(--brand); }
+
+  /* ---------- Site header (sharing context, above the phone) ---------- */
+  .sitehead { max-width: 430px; margin: 0 auto; padding: 26px 20px 6px; text-align: center; }
+  .sitehead .wordmark { display: inline-flex; align-items: center; font-size: 34px; font-weight: 800; letter-spacing: -0.03em; line-height: 1; color: var(--stage); }
+  .sitehead .wordmark img { width: 1.6em; height: 1.6em; display: block; }
+  .sitehead .wordmark .dot { padding: 0 0.06em; }
+  .sitehead .tagline { font-size: 16px; font-weight: 600; color: var(--stage); margin: 8px 0 0; }
+  .sitehead .tagline b { font-weight: 800; }
+  .sitehead .sub { font-size: 14px; color: var(--muted); margin: 6px 0 0; }
+
+  /* ---------- Phone frame ---------- */
+  .phone { position: relative; max-width: 430px; margin: 14px auto 24px; background: var(--bg); min-height: 720px; border: 1px solid var(--border); border-radius: 28px; overflow: hidden; box-shadow: 0 18px 44px rgba(15, 23, 42, 0.12); }
+  @media (max-width: 480px) {
+    .phone { margin: 10px 0 16px; border-radius: 0; border-left: 0; border-right: 0; }
+    .sitehead { padding-top: 18px; }
+  }
+
+  /* ---------- Demo banner ---------- */
+  .demo-banner { background: #fef3c7; color: #92400e; font-size: 13px; line-height: 1.45; padding: 10px 16px; text-align: center; border-bottom: 1px solid #fde68a; }
+  .demo-banner strong { font-weight: 800; }
+
+  /* ---------- App top bar ---------- */
+  .topbar { display: flex; align-items: center; justify-content: space-between; background: #fff; border-bottom: 1px solid var(--border); padding: 12px 16px; }
+  .topbar h1 { font-size: 17px; font-weight: 700; margin: 0; }
+  .iconbtn { width: 40px; height: 40px; border-radius: 50%; border: 1px solid var(--border); background: #fff; display: inline-flex; align-items: center; justify-content: center; color: var(--ink); padding: 0; }
+  .iconbtn svg { width: 22px; height: 22px; }
+
+  /* ---------- Pages ---------- */
+  main { padding: 14px 0 110px; }
+  .page[hidden] { display: none; }
+
+  /* ---------- Home cards ---------- */
+  .homecard { background: var(--card); border-radius: 20px; box-shadow: 0 10px 24px rgba(15, 23, 42, 0.07), 0 2px 6px rgba(15, 23, 42, 0.04); margin: 0 16px 14px; padding: 20px 20px 16px; cursor: pointer; border: 0; display: block; width: calc(100% - 32px); text-align: left; }
+  .homecard .head { display: flex; align-items: center; gap: 10px; font-size: 19px; font-weight: 700; color: var(--brand); }
+  .homecard .head .glyph { width: 30px; height: 30px; border-radius: 50%; background: var(--brand); color: #fff; display: inline-flex; align-items: center; justify-content: center; font-size: 17px; font-weight: 800; flex: 0 0 auto; }
+  .homecard .head .glyph svg { width: 18px; height: 18px; }
+  .homecard .body { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 18px; }
+  .homecard .label { font-size: 15px; color: var(--muted); }
+  .homecard .amount { font-size: 44px; line-height: 1.1; font-weight: 800; color: var(--brand); letter-spacing: -0.02em; margin-top: 2px; }
+  .homecard .sub { font-size: 15px; color: var(--muted); margin-top: 10px; }
+  .homecard .sub b { color: var(--ink); font-weight: 700; }
+  .homecard .chev { text-align: right; color: #9ca3af; font-size: 22px; line-height: 1; margin-top: 6px; }
+  .donut { flex: 0 0 auto; position: relative; width: 118px; height: 118px; }
+  .donut svg { display: block; transform: rotate(-90deg); }
+  .donut .center { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+  .donut .center b { font-size: 24px; font-weight: 800; color: var(--ink); line-height: 1; }
+  .donut .center span { font-size: 14px; color: var(--muted); margin-top: 2px; }
+
+  .rowlink { display: flex; align-items: center; gap: 12px; background: var(--card); border-radius: 20px; box-shadow: 0 10px 24px rgba(15, 23, 42, 0.07), 0 2px 6px rgba(15, 23, 42, 0.04); margin: 0 16px 14px; padding: 18px 20px; border: 0; width: calc(100% - 32px); text-align: left; font-size: 18px; font-weight: 700; color: var(--ink); cursor: pointer; }
+  .rowlink .glyph { width: 30px; height: 30px; border-radius: 8px; background: var(--brand); color: #fff; display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto; }
+  .rowlink .glyph svg { width: 18px; height: 18px; }
+  .rowlink .chev { margin-left: auto; color: #9ca3af; font-size: 22px; font-weight: 400; }
+
+  .sectionhead { display: flex; align-items: baseline; justify-content: space-between; margin: 18px 20px 10px; }
+  .sectionhead h2 { font-size: 22px; font-weight: 800; margin: 0; letter-spacing: -0.01em; }
+  .sectionhead button { background: none; border: 0; color: var(--brand); font-size: 16px; font-weight: 600; padding: 4px 0; }
+
+  .pastweeks { margin: 0 16px 14px; background: var(--card); border-radius: 16px; box-shadow: 0 6px 16px rgba(15, 23, 42, 0.05); padding: 6px 16px; }
+  .pastweeks .wk { display: flex; justify-content: space-between; gap: 10px; padding: 12px 0; border-top: 1px solid #f1f5f9; font-size: 15px; }
+  .pastweeks .wk:first-child { border-top: 0; }
+  .pastweeks .wk b { font-weight: 700; }
+  .pastweeks .wk span { color: var(--muted); }
+
+  /* ---------- Transactions ---------- */
+  .txhead { display: flex; align-items: center; gap: 10px; margin: 6px 16px 14px; }
+  .txhead h2 { font-size: 30px; font-weight: 800; letter-spacing: -0.02em; margin: 0; flex: 1; }
+  .btn-add { background: var(--brand); color: #fff; border: 0; border-radius: 14px; padding: 10px 16px; font-size: 16px; font-weight: 700; min-height: 44px; }
+  .btn-grey { background: #e5e7eb; color: var(--ink); border: 0; border-radius: 14px; padding: 10px 16px; font-size: 16px; font-weight: 600; min-height: 44px; }
+  .btn-dots { background: #fff; color: var(--ink); border: 1.5px solid #d1d5db; border-radius: 14px; padding: 10px 14px; font-size: 16px; font-weight: 700; min-height: 44px; }
+  .search { margin: 0 16px 8px; display: flex; align-items: center; gap: 10px; background: var(--field); border-radius: 14px; padding: 12px 14px; }
+  .search svg { width: 19px; height: 19px; color: #9ca3af; flex: 0 0 auto; }
+  .search input { border: 0; outline: 0; background: transparent; font-size: 16px; width: 100%; color: var(--ink); font-family: inherit; }
+  .search input::placeholder { color: #9ca3af; }
+  .chips { display: flex; gap: 8px; margin: 6px 16px 4px; flex-wrap: wrap; }
+  .chips[hidden] { display: none; }
+  .chip { border: 1.5px solid #d1d5db; background: #fff; color: var(--ink); border-radius: 12px; padding: 8px 14px; font-size: 15px; font-weight: 600; }
+  .chip.active { background: var(--brand); border-color: var(--brand); color: #fff; }
+  .countline { text-align: center; font-size: 13px; color: var(--muted); margin: 12px 16px; }
+  .txlist { background: var(--card); border-radius: 20px; box-shadow: 0 10px 24px rgba(15, 23, 42, 0.07), 0 2px 6px rgba(15, 23, 42, 0.04); margin: 0 16px; overflow: hidden; }
+  .txrow { border: 0; background: #fff; width: 100%; text-align: left; padding: 0; cursor: pointer; display: block; }
+  .txrow + .txrow { border-top: 1px solid #f1f5f9; }
+  .txrow .main { display: flex; gap: 12px; align-items: center; padding: 14px 16px; }
+  .tile { width: 40px; height: 40px; border-radius: 12px; background: #e5e7eb; color: var(--ink); display: inline-flex; align-items: center; justify-content: center; font-size: 19px; font-weight: 700; flex: 0 0 auto; }
+  .txrow .mid { flex: 1; min-width: 0; }
+  .txrow .name { font-size: 17px; font-weight: 700; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-transform: uppercase; }
+  .txrow .status { font-size: 14px; color: var(--muted); margin-top: 1px; }
+  .txrow .right { text-align: right; flex: 0 0 auto; }
+  .txrow .amt { font-size: 17px; font-weight: 700; }
+  .txrow .amt.spending { color: var(--ink); }
+  .txrow .amt.charity { color: var(--brand); }
+  .txrow .amt.income { color: var(--income); }
+  .txrow .amt.excluded { color: var(--muted); }
+  .txrow .date { font-size: 14px; color: var(--muted); margin-top: 1px; }
+  .txrow .chev { color: #9ca3af; font-size: 20px; margin-left: 2px; }
+  .txdetail { padding: 0 16px 14px 68px; font-size: 14px; color: var(--body); line-height: 1.7; }
+  .txdetail b { color: var(--ink); }
+  .txdetail[hidden] { display: none; }
+  .empty { padding: 28px 16px; text-align: center; color: var(--muted); font-size: 15px; }
+
+  /* ---------- Funds ---------- */
+  .reorderbar { display: flex; justify-content: flex-end; margin: 6px 16px 12px; }
+  .reorderbar button { background: var(--brand); color: #fff; border: 0; border-radius: 12px; padding: 10px 16px; font-size: 16px; font-weight: 700; min-height: 44px; display: inline-flex; align-items: center; gap: 8px; }
+  .reorderbar button svg { width: 18px; height: 18px; }
+  .fundcard { background: var(--card); border-radius: 20px; box-shadow: 0 10px 24px rgba(15, 23, 42, 0.07), 0 2px 6px rgba(15, 23, 42, 0.04); margin: 0 16px 14px; border: 0; width: calc(100% - 32px); text-align: left; padding: 0; display: block; cursor: pointer; }
+  .fundcard .fhead { display: flex; align-items: center; gap: 10px; padding: 18px 18px 0; font-size: 19px; font-weight: 700; }
+  .fundcard .fhead .glyph { width: 30px; height: 30px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-size: 17px; font-weight: 800; flex: 0 0 auto; color: #fff; }
+  .fundcard .fhead .glyph svg { width: 18px; height: 18px; }
+  .fundcard .fhead .fname { flex: 1; min-width: 0; }
+  .fundcard .fhead .info { width: 26px; height: 26px; border-radius: 50%; border: 1.5px solid var(--brand); color: var(--brand); background: #fff; font-size: 14px; font-weight: 800; display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto; padding: 0; }
+  .fundcard .fhead .chev { color: #9ca3af; font-size: 20px; }
+  .fundcard .fhead .mv { display: flex; flex-direction: column; gap: 4px; }
+  .fundcard .fhead .mv button { width: 30px; height: 24px; border: 1px solid var(--border); background: #fff; border-radius: 6px; color: var(--ink); font-size: 13px; line-height: 1; padding: 0; }
+  .fundcard .famt { font-size: 34px; font-weight: 800; letter-spacing: -0.02em; padding: 10px 20px 18px; }
+  .fundcard .fdetail { border-top: 1px solid #f1f5f9; padding: 14px 20px 18px; }
+  .fundcard .fdetail[hidden] { display: none; }
+  .drow { display: flex; justify-content: space-between; gap: 10px; padding: 7px 0; font-size: 15px; }
+  .drow span { color: var(--muted); }
+  .drow b { font-weight: 700; }
+  .drow.note { color: var(--muted); font-size: 14px; line-height: 1.55; }
+  .fbtns { display: flex; flex-direction: column; gap: 10px; margin-top: 14px; }
+  .fbtns button { border-radius: 12px; padding: 12px 16px; font-size: 16px; font-weight: 700; min-height: 46px; }
+  .fbtns .primary { background: var(--brand); color: #fff; border: 0; }
+  .fbtns .outline { background: #fff; color: var(--brand); border: 1.5px solid var(--brand); }
+
+  /* ---------- Tab bar ---------- */
+  .tabbar { position: absolute; left: 50%; transform: translateX(-50%); bottom: 14px; width: min(400px, calc(100% - 32px)); background: #fff; border-radius: 16px; box-shadow: 0 10px 26px rgba(15, 23, 42, 0.16), 0 2px 6px rgba(15, 23, 42, 0.08); border: 1px solid var(--border); display: flex; padding: 6px; z-index: 40; }
+  .tabbar button { flex: 1; border: 0; background: transparent; color: #6b7280; font-size: 16px; font-weight: 500; padding: 12px 0; border-radius: 12px; }
+  .tabbar button.active { background: var(--seg); color: var(--ink); font-weight: 600; }
+
+  /* ---------- Toast ---------- */
+  .toast { position: absolute; top: 12px; left: 50%; transform: translateX(-50%); width: min(380px, calc(100% - 32px)); border-radius: 12px; padding: 12px 14px; font-size: 15px; font-weight: 600; display: flex; align-items: center; gap: 10px; z-index: 60; box-shadow: 0 10px 24px rgba(15, 23, 42, 0.16); }
+  .toast[hidden] { display: none; }
+  .toast.success { background: #dcfce7; color: #166534; }
+  .toast.info { background: #dbeafe; color: #1e40af; }
+  .toast span { flex: 1; }
+  .toast button { border: 0; background: transparent; font-size: 18px; line-height: 1; color: inherit; padding: 2px 4px; }
+
+  /* ---------- Sheets / menus ---------- */
+  .scrim { position: absolute; inset: 0; background: rgba(15, 23, 42, 0.35); z-index: 50; }
+  .scrim[hidden] { display: none; }
+  .sheet { position: absolute; left: 0; right: 0; bottom: 0; background: #fff; border-radius: 24px 24px 0 0; padding: 20px 20px 28px; z-index: 55; box-shadow: 0 -12px 32px rgba(15, 23, 42, 0.18); }
+  .sheet[hidden] { display: none; }
+  .sheet h3 { font-size: 20px; font-weight: 800; margin: 0 0 4px; }
+  .sheet .hint { font-size: 14px; color: var(--muted); margin: 0 0 16px; }
+  .sheet label { display: block; font-size: 14px; font-weight: 600; color: var(--body); margin-bottom: 12px; }
+  .sheet input, .sheet select { display: block; width: 100%; margin-top: 5px; border: 1.5px solid #d1d5db; border-radius: 12px; padding: 12px 12px; font-size: 16px; font-family: inherit; color: var(--ink); background: #fff; }
+  .sheet .rowbtns { display: flex; gap: 10px; margin-top: 6px; }
+  .sheet .rowbtns button { flex: 1; border-radius: 12px; padding: 12px 16px; font-size: 16px; font-weight: 700; min-height: 46px; }
+  .menu { position: absolute; top: 132px; right: 16px; background: #fff; border-radius: 16px; box-shadow: 0 14px 32px rgba(15, 23, 42, 0.18); border: 1px solid var(--border); z-index: 55; min-width: 210px; padding: 6px; }
+  .menu[hidden] { display: none; }
+  .menu button { display: block; width: 100%; text-align: left; border: 0; background: transparent; padding: 12px 12px; font-size: 16px; color: var(--ink); border-radius: 10px; }
+  .menu button:hover { background: #f1f5f9; }
+
+  /* ---------- Page footer ---------- */
+  .pagefoot { max-width: 430px; margin: 0 auto 40px; padding: 0 20px; text-align: center; font-size: 13px; color: var(--muted); line-height: 1.7; }
+  .pagefoot a { color: var(--brand); }
+</style>
 </head>
 <body>
-<header class="topbar">
-  <div>
-    <strong>Household Budget</strong>
-    <span id="roleBadge" class="badge">DEMO</span>
-  </div>
-  <button id="switchUserBtn" class="btn btn-small" type="button">Switch user</button>
+<header class="sitehead">
+  <span class="wordmark"><img src="icon-192.png" alt=""><span aria-hidden="true">·</span>T<span aria-hidden="true">·</span>A<span aria-hidden="true">·</span>G<span aria-hidden="true">·</span>E</span>
+  <p class="tagline"><b>S</b>pend <b>T</b>rack <b>A</b>nd <b>G</b>ive <b>E</b>asily</p>
+  <p class="sub">An interactive demo of the STAGE app — tap through it below.</p>
 </header>
 
-<div class="demo-banner" role="alert">
-  <strong>DEMO DATA</strong> — Fake transactions only. No live Gmail, Plaid, or bank
-  connection. No real money moves here. Last sync: <span id="lastSync">—</span>
-  <button id="refreshBtn" class="btn btn-small" type="button">Refresh</button>
+<div class="phone" id="phone">
+  <div class="demo-banner" role="note"><strong>DEMO DATA</strong> — Fake transactions only. No live Gmail, Plaid, or bank connection. No real money moves here.</div>
+
+  <header class="topbar">
+    <button class="iconbtn" id="syncBtn" type="button" aria-label="Sync (demo)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg>
+    </button>
+    <h1>Demo Household</h1>
+    <button class="iconbtn" id="profileBtn" type="button" aria-label="Profile (demo)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="9" r="3.2"/><path d="M5.5 19c1.2-2.6 3.6-4 6.5-4s5.3 1.4 6.5 4"/></svg>
+    </button>
+  </header>
+
+  <main>
+    <!-- HOME -->
+    <section class="page" id="page-home">
+      <div id="homeCards"></div>
+      <button class="rowlink" id="pastWeeksRow" type="button">
+        <span class="glyph"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="5" width="18" height="16" rx="3"/><path d="M3 10h18M8 3v4M16 3v4"/><circle cx="8" cy="14" r="0.5" fill="currentColor"/><circle cx="12" cy="14" r="0.5" fill="currentColor"/><circle cx="16" cy="14" r="0.5" fill="currentColor"/><circle cx="8" cy="17.5" r="0.5" fill="currentColor"/><circle cx="12" cy="17.5" r="0.5" fill="currentColor"/></svg></span>
+        Past Weeks
+        <span class="chev">›</span>
+      </button>
+      <div class="pastweeks" id="pastWeeksBox" hidden></div>
+      <div class="sectionhead">
+        <h2>Recent Transactions</h2>
+        <button id="seeAllBtn" type="button">See All</button>
+      </div>
+      <div id="homeRecent"></div>
+    </section>
+
+    <!-- TRANSACTIONS -->
+    <section class="page" id="page-transactions" hidden>
+      <div class="txhead">
+        <h2>Transactions</h2>
+        <button class="btn-add" id="addBtn" type="button">+ Add</button>
+        <button class="btn-grey" id="filtersBtn" type="button">Filters</button>
+        <button class="btn-dots" id="menuBtn" type="button" aria-label="More">···</button>
+      </div>
+      <label class="search">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.8-3.8"/></svg>
+        <input id="searchInput" type="search" placeholder="Search transactions" autocomplete="off">
+      </label>
+      <div class="chips" id="filterChips" hidden>
+        <button class="chip active" data-filter="all" type="button">All</button>
+        <button class="chip" data-filter="spending" type="button">Spending</button>
+        <button class="chip" data-filter="charity" type="button">Charity</button>
+        <button class="chip" data-filter="income" type="button">Income</button>
+      </div>
+      <p class="countline" id="countLine"></p>
+      <div class="txlist" id="txList"></div>
+    </section>
+
+    <!-- FUNDS -->
+    <section class="page" id="page-funds" hidden>
+      <div class="reorderbar">
+        <button id="reorderBtn" type="button">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+          <span id="reorderLabel">Reorder</span>
+        </button>
+      </div>
+      <div id="fundList"></div>
+    </section>
+  </main>
+
+  <nav class="tabbar" aria-label="Sections">
+    <button data-tab="home" class="active" type="button">Home</button>
+    <button data-tab="transactions" type="button">Transactions</button>
+    <button data-tab="funds" type="button">Funds</button>
+  </nav>
+
+  <div class="toast success" id="toast" hidden><span id="toastText"></span><button id="toastClose" type="button" aria-label="Dismiss">×</button></div>
+
+  <div class="scrim" id="scrim" hidden></div>
+
+  <div class="sheet" id="addSheet" hidden>
+    <h3>Add a Transaction</h3>
+    <p class="hint">Demo only — this adds a row to the demo list. Nothing is saved or sent anywhere.</p>
+    <label>Merchant
+      <input id="addMerchant" type="text" maxlength="40" placeholder="e.g. WHOLE FOODS" autocomplete="off">
+    </label>
+    <label>Amount ($)
+      <input id="addAmount" type="number" step="0.01" min="0.01" placeholder="0.00" inputmode="decimal">
+    </label>
+    <label>Kind
+      <select id="addKind">
+        <option value="spending">Spending</option>
+        <option value="charity">Charity</option>
+        <option value="income">Income</option>
+      </select>
+    </label>
+    <div class="rowbtns">
+      <button class="outline" id="addCancel" type="button" style="background:#fff;color:var(--brand);border:1.5px solid var(--brand);">Cancel</button>
+      <button class="primary" id="addSave" type="button" style="background:var(--brand);color:#fff;border:0;">Add</button>
+    </div>
+  </div>
+
+  <div class="menu" id="menu" hidden>
+    <button data-menu="Review" type="button">Review</button>
+    <button data-menu="Trash" type="button">Trash</button>
+    <button data-menu="Merchant Rules" type="button">Merchant Rules</button>
+  </div>
 </div>
 
-<nav class="tabs" aria-label="Sections">
-  <button class="tab active" data-tab="dashboard" type="button">Dashboard</button>
-  <button class="tab" data-tab="transactions" type="button">Transactions</button>
-  <button class="tab" data-tab="fund" type="button">Extra Fund</button>
-  <button class="tab" data-tab="savings" type="button">Savings</button>
-  <button class="tab admin-tab" data-tab="settings" type="button">Settings</button>
-  <button class="tab" data-tab="audit" type="button">Audit</button>
-</nav>
-
-<main>
-  <!-- DEMO SIGN-IN -->
-  <section id="view-signin" class="card">
-    <h1>Household Budget</h1>
-    <p class="muted">Private household pilot — two users only. This is a <strong>local demo
-    sign-in</strong>, not production authentication. Pick a demo role to continue.</p>
-    <button id="signinAdmin" class="btn btn-primary btn-block" type="button">Continue as Owner (Admin) — DEMO</button>
-    <button id="signinMember" class="btn btn-block" type="button">Continue as Spouse (Member) — DEMO</button>
-    <p class="muted small">No password is used in this demo. No account is created.
-    Card numbers are never shown — suffixes only (e.g. ••1005).</p>
-  </section>
-
-  <!-- DASHBOARD -->
-  <section id="tab-dashboard" class="tabpane">
-    <div class="card hero">
-      <div class="kicker">Available this week · <span id="weekLabel"></span></div>
-      <div id="weeklyAvailable" class="big">$0.00</div>
-      <p class="muted">Estimate — provisional transactions are included and marked.
-      A negative number means the household is over this week's budget.</p>
-    </div>
-    <div class="grid">
-      <div class="card"><div class="kicker">Weekly allowance</div><div class="num" id="statAllowance"></div></div>
-      <div class="card"><div class="kicker">Weekly spent (normal)</div><div class="num" id="statSpent"></div></div>
-      <div class="card"><div class="kicker">Incoming debt</div><div class="num" id="statDebt"></div></div>
-      <div class="card"><div class="kicker">Extra Fund available</div><div class="num" id="statFund"></div></div>
-      <div class="card"><div class="kicker">Extra Fund pending release</div><div class="num" id="statPending"></div></div>
-    </div>
-    <div class="card">
-      <h2>Sync status</h2>
-      <ul id="syncList" class="plain"></ul>
-      <p class="muted small">Sources: <span id="sourceCounts"></span>. An absent alert does
-      not prove no spending occurred. Provisional = not yet bank-verified.</p>
-    </div>
-  </section>
-
-  <!-- TRANSACTIONS -->
-  <section id="tab-transactions" class="tabpane hidden">
-    <div class="card">
-      <h2>Transactions</h2>
-      <label>Search merchant <input id="txSearch" type="search" placeholder="e.g. grocery"></label>
-      <label>Filter
-        <select id="txFilter">
-          <option value="all">All</option>
-          <option value="current">Current week</option>
-          <option value="provisional">Provisional only</option>
-          <option value="verified">Verified only</option>
-          <option value="refunds">Refunds</option>
-          <option value="fund">Fund-allocated</option>
-        </select>
-      </label>
-      <ul id="txList" class="plain"></ul>
-    </div>
-
-    <div class="card">
-      <h2>Add a manual purchase (provisional)</h2>
-      <form id="manualForm">
-        <label>Merchant <input name="merchant" required maxlength="80"></label>
-        <label>Amount ($) <input name="amount" type="number" step="0.01" min="0.01" required></label>
-        <label>Date <input name="date" type="date" required></label>
-        <label>Card suffix (last 4 digits only) <input name="suffix" pattern="[0-9]{4}" maxlength="4" placeholder="1005" required></label>
-        <button class="btn btn-primary" type="submit">Add as PROVISIONAL</button>
-      </form>
-      <p class="muted small">Manual entries are marked PROVISIONAL and count in this
-      week's budget until reconciled. Never enter a full card number.</p>
-    </div>
-
-    <div class="card">
-      <h2>CSV import (Amex-style, demo)</h2>
-      <p class="muted small">Expected columns: Date, Description, Amount, Card Ending.
-      Rows are deduplicated by a stable hash — re-importing the same file adds nothing.</p>
-      <input id="csvFile" type="file" accept=".csv,text/csv">
-      <button id="csvSampleBtn" class="btn" type="button">Load sample CSV</button>
-      <div id="csvResult" class="result"></div>
-    </div>
-
-    <div class="card">
-      <h2>Synthetic Amex-alert ingest (demo only)</h2>
-      <p class="muted small"><strong>SYNTHETIC SAMPLE — not a live Gmail connection.</strong>
-      Paste an alert-style text; the parser extracts amount, merchant, date, and card
-      suffix. If it cannot parse confidently, it fails closed into quarantine and
-      creates nothing.</p>
-      <button id="alertSampleBtn" class="btn" type="button">Load sample alert</button>
-      <textarea id="alertText" rows="5" placeholder="Paste a sample Amex alert here…"></textarea>
-      <button id="alertParseBtn" class="btn btn-primary" type="button">Parse as provisional</button>
-      <div id="alertResult" class="result"></div>
-    </div>
-  </section>
-
-  <!-- EXTRA FUND -->
-  <section id="tab-fund" class="tabpane hidden">
-    <div class="card">
-      <h2>Extra Fund</h2>
-      <div class="grid">
-        <div><div class="kicker">Available</div><div class="num" id="fundAvailable"></div></div>
-        <div><div class="kicker">Pending release</div><div class="num" id="fundPending"></div></div>
-        <div><div class="kicker">Spent (allocated)</div><div class="num" id="fundSpent"></div></div>
-        <div><div class="kicker">Shortfall</div><div class="num" id="fundShortfall"></div></div>
-      </div>
-      <p class="muted small">The fund is a ledger number, not cash held at Amex.
-      Nothing is spent from it until an admin approves an allocation.</p>
-    </div>
-    <div class="card" id="fundRequestCard">
-      <h2>Request Extra Fund use (member)</h2>
-      <form id="fundRequestForm">
-        <label>Transaction
-          <select name="txId" id="fundTxSelect" required></select>
-        </label>
-        <label>Amount ($) <input name="amount" type="number" step="0.01" min="0.01" required></label>
-        <label>Note (optional) <input name="note" maxlength="120"></label>
-        <button class="btn btn-primary" type="submit">Send request</button>
-      </form>
-      <p class="muted small admin-note">Admins approve from the queue below; members
-      cannot approve their own requests.</p>
-    </div>
-    <div class="card">
-      <h2>Request queue &amp; allocations</h2>
-      <ul id="fundQueue" class="plain"></ul>
-      <h3>Allocations</h3>
-      <ul id="fundAllocations" class="plain"></ul>
-    </div>
-  </section>
-
-  <!-- SAVINGS -->
-  <section id="tab-savings" class="tabpane hidden">
-    <div class="card">
-      <h2>Savings reconciliation (read-only — never a transfer)</h2>
-      <div class="grid">
-        <div><div class="kicker">Fund available</div><div class="num" id="savFund"></div></div>
-        <div><div class="kicker">Earned, not yet transferred</div><div class="num" id="savEarned"></div></div>
-        <div><div class="kicker">Actual savings balance</div><div class="num" id="savActual"></div></div>
-        <div><div class="kicker">Interest (tracked separately)</div><div class="num" id="savInterest"></div></div>
-      </div>
-      <p class="muted small">Positive "earned, not yet transferred" is the suggested
-      amount to move by hand. A transfer is confirmed only when it appears in
-      imported bank data or the admin attests to it. This app never moves money.</p>
-    </div>
-    <div class="card admin-only-card">
-      <h2>Record a savings movement (admin, manual attestation — demo)</h2>
-      <form id="savInForm" class="inline-form">
-        <label>Transfer IN to savings ($) <input name="amount" type="number" step="0.01" min="0.01" required></label>
-        <button class="btn" type="submit">Record transfer in</button>
-      </form>
-      <form id="savOutForm" class="inline-form">
-        <label>Withdrawal OUT of savings ($) <input name="amount" type="number" step="0.01" min="0.01" required></label>
-        <button class="btn" type="submit">Record withdrawal</button>
-      </form>
-      <form id="savInterestForm" class="inline-form">
-        <label>Interest ($) <input name="amount" type="number" step="0.01" min="0.01" required></label>
-        <button class="btn" type="submit">Record interest</button>
-      </form>
-      <p class="muted small">Members see this page read-only.</p>
-    </div>
-  </section>
-
-  <!-- SETTINGS (admin only) -->
-  <section id="tab-settings" class="tabpane hidden">
-    <div class="card">
-      <h2>Settings (admin only)</h2>
-      <p class="muted small">Role restrictions are also enforced by the server
-      (see server.mjs): a member calling an admin endpoint gets a 403.</p>
-      <form id="settingsForm">
-        <label>Base weekly allowance ($) <input name="base" type="number" step="1" min="0" required></label>
-        <label>Temporary increase, current week ($) <input name="temp" type="number" step="1" min="0"></label>
-        <label>Temporary increase reason <input name="tempReason" maxlength="120"></label>
-        <button class="btn btn-primary" type="submit">Save settings</button>
-      </form>
-      <p class="muted small">Base allowance changes apply from the current week.
-      Temporary increases never generate surplus and never pay down earlier debt.</p>
-    </div>
-    <div class="card">
-      <h2>Member invitation (demo placeholder)</h2>
-      <p class="muted">Household has 2 members: Owner (admin) and Spouse (member).
-      No public signup. This button sends nothing — it only records that the
-      placeholder was used, so the real invite flow is not faked.</p>
-      <button id="inviteBtn" class="btn" type="button">Invite member (placeholder — sends nothing)</button>
-    </div>
-    <div class="card">
-      <h2>Integrations status</h2>
-      <ul class="plain">
-        <li>Gmail alerts — <strong>Not connected (demo)</strong></li>
-        <li>Plaid — <strong>Not connected (demo)</strong></li>
-        <li>CSV import — <strong>Available (demo)</strong></li>
-      </ul>
-    </div>
-    <div class="card">
-      <h2>Excluded transactions</h2>
-      <ul id="excludedList" class="plain"></ul>
-    </div>
-  </section>
-
-  <!-- AUDIT -->
-  <section id="tab-audit" class="tabpane hidden">
-    <div class="card">
-      <h2>Activity / audit log</h2>
-      <p class="muted small">Visible to both users. Entries are append-only in this
-      demo — there is no delete or edit control.</p>
-      <ul id="auditList" class="plain"></ul>
-    </div>
-  </section>
-</main>
-
-<footer class="foot muted small">
-  Household Budget — Milestone A prototype. DEMO DATA only. No live sync, no
-  production security, no App Store readiness claimed. See README.md.
+<footer class="pagefoot">
+  STAGE — Demo. Fake data only. This demo never moves money and never shows full card numbers.<br>
+  <a href="index.html">Back to STAGE</a> · <a href="privacy.html">Privacy</a> · <a href="terms.html">Terms</a>
 </footer>
 
-<script type="module" src="app.js"></script>
+<script>
+"use strict";
+/* STAGE demo — fake data only. No network, no storage, no real money. */
+
+var state = {
+  allowance: 600.00,
+  savings: { balance: 185.00, transferredIn: 200.00, withdrawn: 15.00, interest: 0.00 },
+  filter: "all",
+  search: "",
+  expandedTx: null,
+  expandedFund: null,
+  reorderMode: false,
+  pastWeeksOpen: false,
+  fundOrder: ["overspent", "spending", "savings", "tzedaka"],
+  txs: [
+    { id: 1,  merchant: "WHOLE FOODS",      kind: "spending", amount: 84.32,  status: "Posted",  daysAgo: 0, card: "4417" },
+    { id: 2,  merchant: "TARGET",           kind: "spending", amount: 42.18,  status: "Posted",  daysAgo: 0, card: "4417" },
+    { id: 3,  merchant: "SHELL",            kind: "spending", amount: 38.50,  status: "Pending", daysAgo: 1, card: "8821" },
+    { id: 4,  merchant: "LOCAL FOOD BANK",  kind: "charity",  amount: 25.00,  status: "Posted",  daysAgo: 1, card: "4417" },
+    { id: 5,  merchant: "NETFLIX",          kind: "spending", amount: 15.49,  status: "Posted",  daysAgo: 1, card: "4417" },
+    { id: 6,  merchant: "COSTCO",           kind: "spending", amount: 112.47, status: "Posted",  daysAgo: 2, card: "8821" },
+    { id: 7,  merchant: "STARBUCKS",        kind: "spending", amount: 6.85,   status: "Posted",  daysAgo: 2, card: "4417" },
+    { id: 8,  merchant: "ACME CORP",        kind: "income",   amount: 2400.00,status: "Posted",  daysAgo: 3, card: "8821", note: "Paycheck" },
+    { id: 9,  merchant: "SPOTIFY",          kind: "spending", amount: 10.99,  status: "Posted",  daysAgo: 3, card: "4417" },
+    { id: 10, merchant: "TRADER JOE'S",     kind: "spending", amount: 57.63,  status: "Pending", daysAgo: 4, card: "4417" },
+    { id: 11, merchant: "COMMUNITY CHEST",  kind: "charity",  amount: 40.00,  status: "Posted",  daysAgo: 4, card: "4417" },
+    { id: 12, merchant: "CVS PHARMACY",     kind: "spending", amount: 18.24,  status: "Posted",  daysAgo: 5, card: "8821" },
+    { id: 13, merchant: "MEALS ON WHEELS",  kind: "charity",  amount: 60.00,  status: "Posted",  daysAgo: 5, card: "4417" }
+  ]
+};
+
+var nextId = 100;
+
+function money(n) {
+  return "$" + n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+function esc(s) {
+  return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+function dateLabel(daysAgo) {
+  if (daysAgo === 0) return "Today";
+  if (daysAgo === 1) return "Yesterday";
+  var d = new Date();
+  d.setDate(d.getDate() - daysAgo);
+  return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+}
+function weekSpent() {
+  return state.txs.reduce(function (s, t) { return t.kind === "spending" ? s + t.amount : s; }, 0);
+}
+function tzedaka() {
+  var income = state.txs.reduce(function (s, t) { return t.kind === "income" ? s + t.amount : s; }, 0);
+  var total = income * 0.10;
+  var given = state.txs.reduce(function (s, t) { return t.kind === "charity" ? s + t.amount : s; }, 0);
+  return { total: total, given: given, ready: Math.max(0, total - given) };
+}
+function shownTxs() {
+  var q = state.search.trim().toLowerCase();
+  return state.txs.filter(function (t) {
+    if (state.filter !== "all" && t.kind !== state.filter) return false;
+    if (q && t.merchant.toLowerCase().indexOf(q) === -1) return false;
+    return true;
+  });
+}
+function donut(pct, label) {
+  var r = 52, c = 2 * Math.PI * r;
+  var p = Math.max(0, Math.min(100, pct));
+  var dash = (p / 100 * c).toFixed(1);
+  return '<div class="donut" aria-hidden="true">'
+    + '<svg width="118" height="118" viewBox="0 0 118 118">'
+    + '<circle cx="59" cy="59" r="' + r + '" fill="none" stroke="#dbeafe" stroke-width="8"/>'
+    + '<circle cx="59" cy="59" r="' + r + '" fill="none" stroke="#2f6bff" stroke-width="8" stroke-linecap="round" stroke-dasharray="' + dash + ' ' + c.toFixed(1) + '"/>'
+    + '</svg>'
+    + '<div class="center"><b>' + Math.round(p) + '%</b><span>' + label + '</span></div>'
+    + '</div>';
+}
+function giftSvg() {
+  return '<svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="8" width="17" height="4" rx="1"/><path d="M5 12v8h14v-8M12 8v12M12 8s-4.5.3-4.5-2.3C7.5 3.9 10 3.5 12 8zm0 0s4.5.3 4.5-2.3C16.5 3.9 14 3.5 12 8z"/></svg>';
+}
+function banknoteSvg() {
+  return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2.5" y="6" width="19" height="12" rx="2"/><circle cx="12" cy="12" r="3"/></svg>';
+}
+function tile(letter) {
+  return '<span class="tile">' + esc(letter) + '</span>';
+}
+
+var toastTimer = null;
+function toast(msg, kind) {
+  var el = document.getElementById("toast");
+  el.className = "toast " + (kind || "success");
+  document.getElementById("toastText").textContent = msg;
+  el.hidden = false;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(function () { el.hidden = true; }, 4000);
+}
+document.getElementById("toastClose").addEventListener("click", function () {
+  document.getElementById("toast").hidden = true;
+  clearTimeout(toastTimer);
+});
+
+function renderHome() {
+  var spent = weekSpent();
+  var avail = state.allowance - spent;
+  var pctUsed = state.allowance > 0 ? spent / state.allowance * 100 : 0;
+  var tz = tzedaka();
+  var pctGiven = tz.total > 0 ? tz.given / tz.total * 100 : 0;
+  var html = ""
+    + '<button class="homecard" id="homeSpending" type="button">'
+    + '<span class="head"><span class="glyph">$</span>Spending</span>'
+    + '<span class="body"><span><span class="label">Available</span><br><span class="amount">' + money(avail) + '</span></span>'
+    + donut(pctUsed, "used") + '</span>'
+    + '<span class="sub"><b>' + money(spent) + '</b> spent so far</span>'
+    + '<span class="chev">›</span>'
+    + '</button>'
+    + '<button class="homecard" id="homeTzedaka" type="button">'
+    + '<span class="head"><span class="glyph">' + giftSvg() + '</span>Tzedaka</span>'
+    + '<span class="body"><span><span class="label">Ready to give</span><br><span class="amount">' + money(tz.ready) + '</span></span>'
+    + donut(pctGiven, "given") + '</span>'
+    + '<span class="sub">Set aside for you — 10% of income</span>'
+    + '<span class="chev">›</span>'
+    + '</button>';
+  document.getElementById("homeCards").innerHTML = html;
+  document.getElementById("homeSpending").addEventListener("click", function () { showTab("funds"); expandFund("spending"); });
+  document.getElementById("homeTzedaka").addEventListener("click", function () { showTab("funds"); expandFund("tzedaka"); });
+
+  var box = document.getElementById("pastWeeksBox");
+  if (state.pastWeeksOpen) {
+    box.hidden = false;
+    box.innerHTML = ""
+      + '<div class="wk"><b>Week of ' + pastWeekLabel(7) + '</b><span>Allowance ' + money(600) + ' · Spent ' + money(402.10) + '</span></div>'
+      + '<div class="wk"><b>Week of ' + pastWeekLabel(14) + '</b><span>Allowance ' + money(600) + ' · Spent ' + money(388.75) + '</span></div>';
+  } else {
+    box.hidden = true;
+    box.innerHTML = "";
+  }
+
+  var recent = state.txs.slice(0, 6);
+  document.getElementById("homeRecent").innerHTML = '<div class="txlist">' + recent.map(txRowHtml).join("") + "</div>";
+  bindTxRows(document.getElementById("homeRecent"));
+}
+function pastWeekLabel(daysAgo) {
+  var d = new Date();
+  d.setDate(d.getDate() - daysAgo);
+  return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+}
+function txRowHtml(t) {
+  var letter = t.merchant.charAt(0);
+  var detail = state.expandedTx === t.id
+    ? '<div class="txdetail"><b>' + esc(t.merchant) + '</b> · ' + money(t.amount) + '<br>'
+      + 'Status: ' + t.status + ' · ' + dateLabel(t.daysAgo) + ' · ••' + t.card + '<br>'
+      + 'Kind: ' + t.kind.charAt(0).toUpperCase() + t.kind.slice(1)
+      + (t.note ? ' · ' + esc(t.note) : '') + '</div>'
+    : '<div class="txdetail" hidden></div>';
+  return '<button class="txrow" data-txid="' + t.id + '" type="button">'
+    + '<span class="main">' + tile(letter)
+    + '<span class="mid"><span class="name">' + esc(t.merchant) + '</span><br><span class="status">' + t.status + '</span></span>'
+    + '<span class="right"><span class="amt ' + t.kind + '">' + money(t.amount) + '</span><br><span class="date">' + dateLabel(t.daysAgo) + ' · ••' + t.card + '</span></span>'
+    + '<span class="chev">' + (state.expandedTx === t.id ? "⌄" : "›") + '</span>'
+    + '</span>' + detail + '</button>';
+}
+function bindTxRows(root) {
+  root.querySelectorAll(".txrow").forEach(function (el) {
+    el.addEventListener("click", function () {
+      var id = Number(el.getAttribute("data-txid"));
+      state.expandedTx = state.expandedTx === id ? null : id;
+      render();
+    });
+  });
+}
+function renderTransactions() {
+  var shown = shownTxs();
+  var total = shown.reduce(function (s, t) { return (t.kind === "spending" || t.kind === "charity") ? s + t.amount : s; }, 0);
+  document.getElementById("countLine").textContent = shown.length + (shown.length === 1 ? " transaction" : " transactions") + " · Total " + money(total);
+  var list = document.getElementById("txList");
+  if (shown.length === 0) {
+    list.innerHTML = '<div class="empty">No matching transactions — try a different search, or clear the filters.</div>';
+    return;
+  }
+  list.innerHTML = shown.map(txRowHtml).join("");
+  bindTxRows(list);
+}
+function fundDef(id) {
+  var spent = weekSpent();
+  var tz = tzedaka();
+  if (id === "overspent") return { name: "Overspent (Past)", glyph: '<span style="background:#0f172a">−</span>', amount: money(0), color: "#0f172a",
+    detail: '<div class="drow note">Nothing carried over from past weeks. When spending goes over the weekly allowance, the extra shows up here.</div>' };
+  if (id === "spending") return { name: "Spending", glyph: '<span style="background:#2f6bff">$</span>', amount: money(state.allowance - spent), color: "#2f6bff",
+    detail: '<div class="drow"><span>Base</span><b>' + money(state.allowance) + '</b></div>'
+      + '<div class="drow"><span>Top Ups</span><b>$0.00</b></div>'
+      + '<div class="drow"><span>Total</span><b>' + money(state.allowance) + '</b></div>'
+      + '<div class="drow"><span>Spent so far</span><b>' + money(spent) + '</b></div>'
+      + '<div class="drow"><span>Available</span><b>' + money(state.allowance - spent) + '</b></div>'
+      + '<div class="fbtns"><button class="outline" data-demo="Adjust This Week\'s Budget" type="button">Adjust This Week\'s Budget</button>'
+      + '<button class="outline" data-demo="Recurring Expenses" type="button">Recurring Expenses</button>'
+      + '<button class="outline" data-demo="Weekly Budget Calculator" type="button">Weekly Budget Calculator</button></div>' };
+  if (id === "savings") return { name: "Savings", glyph: '<span style="background:#6b7280">' + banknoteSvg() + '</span>', amount: money(state.savings.balance), color: "#6b7280",
+    detail: '<div class="drow"><span>Balance</span><b>' + money(state.savings.balance) + '</b></div>'
+      + '<div class="drow"><span>Transferred In</span><b>' + money(state.savings.transferredIn) + '</b></div>'
+      + '<div class="drow"><span>Withdrawn</span><b>' + money(state.savings.withdrawn) + '</b></div>'
+      + '<div class="drow"><span>Interest</span><b>' + money(state.savings.interest) + '</b></div>'
+      + '<div class="drow note">Savings is quiet in the background — a cushion for a big bill or a slow month.</div>' };
+  return { name: "Tzedaka", glyph: '<span style="background:#2f6bff">' + giftSvg() + '</span>', amount: money(tz.ready), color: "#2f6bff",
+    detail: '<div class="drow"><span>Available</span><b>' + money(tz.ready) + '</b></div>'
+      + '<div class="drow"><span>Pending</span><b>$0.00</b></div>'
+      + '<div class="drow"><span>Total set aside</span><b>' + money(tz.total) + '</b></div>'
+      + '<div class="drow"><span>Given</span><b>' + money(tz.given) + '</b></div>'
+      + '<div class="fbtns"><button class="primary" data-demo="Add to Tzedaka" type="button">Add to Tzedaka</button>'
+      + '<button class="outline" data-demo="Record a Gift" type="button">Record a Gift</button></div>' };
+}
+function renderFunds() {
+  var html = state.fundOrder.map(function (id, idx) {
+    var f = fundDef(id);
+    var open = state.expandedFund === id;
+    var mv = state.reorderMode
+      ? '<span class="mv"><button data-mv="' + id + '|-1" type="button" aria-label="Move up">↑</button><button data-mv="' + id + '|1" type="button" aria-label="Move down">↓</button></span>'
+      : "";
+    return '<div class="fundcard" data-fund="' + id + '">'
+      + '<div class="fhead"><span class="glyph">' + f.glyph + '</span><span class="fname" style="color:' + f.color + '">' + f.name + '</span>'
+      + '<button class="info" data-info="' + f.name + '" type="button" aria-label="About ' + f.name + '">i</button>'
+      + (mv || '<span class="chev">' + (open ? "⌄" : "›") + "</span>")
+      + '</div>'
+      + '<div class="famt" style="color:' + f.color + '">' + f.amount + '</div>'
+      + '<div class="fdetail"' + (open ? "" : " hidden") + ">" + f.detail + "</div>"
+      + "</div>";
+  }).join("");
+  document.getElementById("fundList").innerHTML = html;
+  document.querySelectorAll(".fundcard").forEach(function (el) {
+    el.addEventListener("click", function (e) {
+      if (e.target.closest(".info") || e.target.closest(".mv")) return;
+      var id = el.getAttribute("data-fund");
+      state.expandedFund = state.expandedFund === id ? null : id;
+      render();
+    });
+  });
+  document.querySelectorAll(".fundcard .info").forEach(function (el) {
+    el.addEventListener("click", function (e) {
+      e.stopPropagation();
+      toast("Demo — " + el.getAttribute("data-info") + " details are shown in the full app.", "info");
+    });
+  });
+  document.querySelectorAll(".fundcard [data-mv]").forEach(function (el) {
+    el.addEventListener("click", function (e) {
+      e.stopPropagation();
+      var parts = el.getAttribute("data-mv").split("|");
+      var id = parts[0], dir = Number(parts[1]);
+      var i = state.fundOrder.indexOf(id);
+      var j = i + dir;
+      if (j < 0 || j >= state.fundOrder.length) return;
+      state.fundOrder.splice(i, 1);
+      state.fundOrder.splice(j, 0, id);
+      render();
+    });
+  });
+  document.querySelectorAll(".fundcard [data-demo]").forEach(function (el) {
+    el.addEventListener("click", function (e) {
+      e.stopPropagation();
+      toast("Demo — " + el.getAttribute("data-demo") + " is not included in the demo.", "info");
+    });
+  });
+  document.getElementById("reorderLabel").textContent = state.reorderMode ? "Done" : "Reorder";
+}
+function expandFund(id) {
+  state.expandedFund = id;
+  render();
+}
+function render() {
+  renderHome();
+  renderTransactions();
+  renderFunds();
+}
+function showTab(tab) {
+  ["home", "transactions", "funds"].forEach(function (t) {
+    document.getElementById("page-" + t).hidden = t !== tab;
+  });
+  document.querySelectorAll(".tabbar button").forEach(function (b) {
+    b.classList.toggle("active", b.getAttribute("data-tab") === tab);
+  });
+  document.getElementById("menu").hidden = true;
+  document.getElementById("phone").scrollTop = 0;
+  window.scrollTo(0, 0);
+}
+
+document.querySelectorAll(".tabbar button").forEach(function (b) {
+  b.addEventListener("click", function () { showTab(b.getAttribute("data-tab")); });
+});
+document.getElementById("seeAllBtn").addEventListener("click", function () { showTab("transactions"); });
+document.getElementById("pastWeeksRow").addEventListener("click", function () {
+  state.pastWeeksOpen = !state.pastWeeksOpen;
+  render();
+});
+document.getElementById("syncBtn").addEventListener("click", function () {
+  toast("Demo — sync is not connected in the demo.", "info");
+});
+document.getElementById("profileBtn").addEventListener("click", function () {
+  toast("Demo — this is a demo household. No sign-in here.", "info");
+});
+document.getElementById("searchInput").addEventListener("input", function (e) {
+  state.search = e.target.value;
+  state.expandedTx = null;
+  renderTransactions();
+});
+document.getElementById("filtersBtn").addEventListener("click", function () {
+  var chips = document.getElementById("filterChips");
+  chips.hidden = !chips.hidden;
+});
+document.querySelectorAll("#filterChips .chip").forEach(function (c) {
+  c.addEventListener("click", function () {
+    document.querySelectorAll("#filterChips .chip").forEach(function (x) { x.classList.remove("active"); });
+    c.classList.add("active");
+    state.filter = c.getAttribute("data-filter");
+    state.expandedTx = null;
+    renderTransactions();
+  });
+});
+document.getElementById("menuBtn").addEventListener("click", function (e) {
+  e.stopPropagation();
+  var m = document.getElementById("menu");
+  m.hidden = !m.hidden;
+});
+document.querySelectorAll("#menu button").forEach(function (b) {
+  b.addEventListener("click", function () {
+    document.getElementById("menu").hidden = true;
+    toast("Demo — " + b.getAttribute("data-menu") + " is not included in the demo.", "info");
+  });
+});
+document.addEventListener("click", function (e) {
+  if (!e.target.closest("#menu") && !e.target.closest("#menuBtn")) {
+    document.getElementById("menu").hidden = true;
+  }
+});
+document.getElementById("reorderBtn").addEventListener("click", function () {
+  state.reorderMode = !state.reorderMode;
+  renderFunds();
+});
+
+/* Add sheet */
+function openAdd() {
+  document.getElementById("scrim").hidden = false;
+  document.getElementById("addSheet").hidden = false;
+  document.getElementById("addMerchant").value = "";
+  document.getElementById("addAmount").value = "";
+  document.getElementById("addKind").value = "spending";
+  setTimeout(function () { document.getElementById("addMerchant").focus(); }, 50);
+}
+function closeAdd() {
+  document.getElementById("scrim").hidden = true;
+  document.getElementById("addSheet").hidden = true;
+}
+document.getElementById("addBtn").addEventListener("click", openAdd);
+document.getElementById("addCancel").addEventListener("click", closeAdd);
+document.getElementById("scrim").addEventListener("click", closeAdd);
+document.getElementById("addSave").addEventListener("click", function () {
+  var merchant = document.getElementById("addMerchant").value.trim().toUpperCase();
+  var amount = parseFloat(document.getElementById("addAmount").value);
+  var kind = document.getElementById("addKind").value;
+  if (!merchant) { toast("Enter a merchant name.", "info"); return; }
+  if (!amount || amount <= 0) { toast("Enter an amount above $0.00.", "info"); return; }
+  state.txs.unshift({ id: nextId++, merchant: merchant, kind: kind, amount: Math.round(amount * 100) / 100, status: "Pending", daysAgo: 0, card: "4417" });
+  state.expandedTx = null;
+  closeAdd();
+  render();
+  toast("Added " + merchant + " (demo).", "success");
+});
+
+render();
+</script>
 </body>
 </html>
