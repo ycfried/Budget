@@ -1,7 +1,7 @@
 import SwiftUI
 import OnBudgetKit
 
-// STAGE — Settings: Merchant Names card (build 30, task E).
+// STAGE — Settings: Merchant Rules card (build 30, task E).
 //
 // The saved merchant-name rules: one pattern maps to a clean
 // display name plus a fixed kind (or none). Rules apply to every
@@ -83,7 +83,7 @@ final class MerchantNamesSettingsViewModel: ObservableObject {
                     // server never saves a blank pattern).
                     pPattern: pattern.isEmpty ? nil : pattern
                 )
-                toast.show("Name updated.", kind: .success)
+                toast.show("Rule updated.", kind: .success)
             } else {
                 _ = try await context.client.rpcs.createMerchantRule(
                     pHouseholdId: context.householdId,
@@ -92,12 +92,12 @@ final class MerchantNamesSettingsViewModel: ObservableObject {
                     pDisplayName: displayName,
                     pFixedKind: fixedKind
                 )
-                toast.show("Name saved.", kind: .success)
+                toast.show("Rule saved.", kind: .success)
             }
             await load()
             return true
         } catch {
-            alert = .failed(title: "Could Not Save Name", message: OnBudgetError.displayMessage(for: error))
+            alert = .failed(title: "Could Not Save Rule", message: OnBudgetError.displayMessage(for: error))
             return false
         }
     }
@@ -105,18 +105,18 @@ final class MerchantNamesSettingsViewModel: ObservableObject {
     func deleteRule(_ rule: MerchantRule) async {
         do {
             try await context.client.rpcs.deleteMerchantRule(pRuleId: rule.id)
-            toast.show("Name removed.", kind: .success)
+            toast.show("Rule removed.", kind: .success)
             await load()
         } catch {
-            alert = .failed(title: "Could Not Remove Name", message: OnBudgetError.displayMessage(for: error))
+            alert = .failed(title: "Could Not Remove Rule", message: OnBudgetError.displayMessage(for: error))
         }
     }
 }
 
-/// Merchant Names as a Transactions subpage (owner, Nov 15, 2026 —
+/// Merchant Rules as a Transactions subpage (owner, Nov 15, 2026 —
 /// build 34): the editor moved out of Settings — it lives on the
 /// Transactions page now, reached from the "Merchants" chip. Same
-/// editor (list + Edit Name sheet), just hosted here with a back
+/// editor (list + Edit Rule sheet), just hosted here with a back
 /// button and title, like the other Transactions subpages.
 struct MerchantNamesPageView: View {
     private let context: SettingsContext
@@ -136,7 +136,7 @@ struct MerchantNamesPageView: View {
                     BackButton(action: onBack)
                     Spacer()
                 }
-                Text("Merchant Names")
+                Text("Merchant Rules")
                     .font(.largeTitle)
                     .fontWeight(.bold)
                     .foregroundStyle(DesignTokens.ink)
@@ -195,8 +195,8 @@ struct MerchantNamesSettingsView: View {
         // Admin-only: members never see the card.
         if context.isAdmin {
             VStack(alignment: .leading, spacing: 16) {
-                SettingsCard(title: "Merchant Names") {
-                    MutedLine(text: "Names you taught the app. A renamed merchant stays renamed on old and new rows.")
+                SettingsCard(title: "Merchant Rules") {
+                    MutedLine(text: "Rules you taught the app. A renamed merchant stays renamed on old and new rows.")
                     if let loadError = viewModel.loadError {
                         DismissableErrorBox(loadError) {
                             viewModel.loadError = nil
@@ -213,21 +213,31 @@ struct MerchantNamesSettingsView: View {
                         }
                         .padding(.top, 8)
                     } else if viewModel.rules.isEmpty {
-                        MutedLine(text: "No merchant names taught yet. Rename a merchant from any transaction to teach the app.")
+                        MutedLine(text: "No merchant rules yet. Rename a merchant from any transaction to teach the app.")
                     } else {
                         VStack(spacing: 0) {
                             ForEach(viewModel.rules) { rule in
                                 Button {
                                     startEditing(rule)
                                 } label: {
-                                    HStack(alignment: .top, spacing: 8) {
+                                    // Build 99 (owner, Nov 26, 2026 —
+                                    // Merchant Rules): the row reads
+                                    // like a transaction row now — the
+                                    // merchant icon tile on the left
+                                    // (logo, or the monogram fallback)
+                                    // is the drop of colour the
+                                    // plain-text rows were missing.
+                                    // Same 40pt icon and 10pt
+                                    // icon/text gap as
+                                    // TransactionRowView.
+                                    HStack(alignment: .top, spacing: 10) {
+                                        TransactionIconView(merchant: rule.displayName, size: 40)
                                         VStack(alignment: .leading, spacing: 2) {
                                             Text(TransactionFormatting.displayMerchant(rule.displayName))
                                                 .font(.system(size: 16, weight: .bold))
                                                 .foregroundStyle(DesignTokens.ink)
-                                            Text(ruleDetailLine(rule))
+                                            ruleDetailLine(rule)
                                                 .font(.system(size: 14))
-                                                .foregroundStyle(Color(hex: "#6b7280"))
                                         }
                                         Spacer()
                                         Image(systemName: "chevron.right")
@@ -244,7 +254,7 @@ struct MerchantNamesSettingsView: View {
                             }
                         }
                     }
-                    Button("Add a Name") {
+                    Button("Add a Rule") {
                         editingRule = nil
                         patternText = ""
                         editablePatternText = ""
@@ -271,7 +281,7 @@ struct MerchantNamesSettingsView: View {
                     // trailing Spacer below keeps it at the top of the
                     // full screen (build 43, item 18).
                     VStack(alignment: .leading, spacing: 16) {
-                        SheetHeader(title: editingRule == nil ? "Add a Name" : "Edit Name") {
+                        SheetHeader(title: editingRule == nil ? "Add a Rule" : "Edit Rule") {
                             showingForm = false
                             editingRule = nil
                         }
@@ -289,7 +299,7 @@ struct MerchantNamesSettingsView: View {
                         switch alert {
                         case .deleteRule(let rule):
                             return AppConfirmDialog.Config(
-                                title: "Remove This Name?",
+                                title: "Remove This Rule?",
                                 message: "“\(TransactionFormatting.displayMerchant(rule.displayName))” will stop renaming “\(rule.patternText)” — old rows keep their current names.",
                                 primaryTitle: "Remove",
                                 tone: .destructive,
@@ -370,14 +380,33 @@ struct MerchantNamesSettingsView: View {
         }
     }
 
-    private func ruleDetailLine(_ rule: MerchantRule) -> String {
-        var parts = ["“\(rule.patternText)”"]
-        parts.append(rule.matchType == "includes" ? "Includes" : "Exact")
+    /// The rule's subtitle — same three pieces as before (bank
+    /// name in quotes, match type Includes/Exact, and "Always X"
+    /// when a fixed kind is set), tidied up: the "Always X" part
+    /// renders in that kind's existing transaction colour, so the
+    /// kind reads at a glance. Build 99 (owner, Nov 26, 2026 —
+    /// Merchant Rules). The colour is the shared four-colour
+    /// transaction rule (TransactionFormatting.amountDisplay):
+    /// money in deep blue, charity primary blue, transfers and
+    /// payments grey, spending ink. No new colours, no pills.
+    private func ruleDetailLine(_ rule: MerchantRule) -> Text {
+        let grey = Color(hex: "#6b7280")
+        var line = Text("“\(rule.patternText)”").foregroundStyle(grey)
+        line = line + Text(" · \(rule.matchType == "includes" ? "Includes" : "Exact")").foregroundStyle(grey)
         if let fixedKind = rule.fixedKind,
            let label = Self.fixedKindOptions.first(where: { $0.raw == fixedKind })?.label {
-            parts.append("Always \(label)")
+            line = line + Text(" · Always \(label)").foregroundStyle(kindColor(for: fixedKind))
         }
-        return parts.joined(separator: " · ")
+        return line
+    }
+
+    private func kindColor(for fixedKind: String) -> Color {
+        switch fixedKind {
+        case "income", "refund", "cashback": return DesignTokens.deep
+        case "charity": return DesignTokens.primary
+        case "transfer", "payment": return DesignTokens.muted
+        default: return DesignTokens.ink
+        }
     }
 
     private func startEditing(_ rule: MerchantRule) {
@@ -472,12 +501,12 @@ struct MerchantNamesSettingsView: View {
                 .pickerStyle(.menu)
             }
             HStack(spacing: 12) {
-                Button(editingRule == nil ? "Save Name" : "Save Changes") {
+                Button(editingRule == nil ? "Save Rule" : "Save Changes") {
                     Task {
                         let display = displayNameText.trimmingCharacters(in: .whitespacesAndNewlines)
                         guard !display.isEmpty else {
                             viewModel.alert = .failed(
-                                title: "Could Not Save Name",
+                                title: "Could Not Save Rule",
                                 message: "Enter the name to show."
                             )
                             return
@@ -500,7 +529,7 @@ struct MerchantNamesSettingsView: View {
                             pattern = patternText.trimmingCharacters(in: .whitespacesAndNewlines)
                             guard !pattern.isEmpty else {
                                 viewModel.alert = .failed(
-                                    title: "Could Not Save Name",
+                                    title: "Could Not Save Rule",
                                     message: "Enter the name as it appears."
                                 )
                                 return
