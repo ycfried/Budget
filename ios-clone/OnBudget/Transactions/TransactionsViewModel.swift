@@ -1171,7 +1171,13 @@ public final class TransactionsViewModel {
                     : "Renamed \(renamed) transactions.",
                 kind: .success
             )
-            await reloadAfterMutation()
+            // Reload in the background (owner, Nov 26, 2026): the
+            // toast is already fired, so the caller does not wait
+            // on the full reload — same pattern as markAsCharity
+            // (build 78 item 9). Awaiting the reload here made
+            // Save spin for a second or two and the toast was
+            // mostly spent by the time the sheet dismissed.
+            Task { await reloadAfterMutation() }
             return true
         } catch let error as OnBudgetError {
             fail(title: "Could Not Rename", message: error.displayMessage)
