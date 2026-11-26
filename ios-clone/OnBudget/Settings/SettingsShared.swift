@@ -285,10 +285,11 @@ struct MutedLine: View {
 /// date — audit X-P1-1), one calendar picks a start date then an end
 /// date. The calendar is the shared `DateRangeCalendarView`; picking
 /// only changes the DRAFT — nothing applies until Apply. Cancel
-/// restores the drafts to the applied filter; Reset Filters (a small
-/// plain link, not a third button) clears the filters. `onResetAll`
-/// clears every filter on the page (Activity: date + type); when nil
-/// (Past Weeks) Reset clears the date filter only.
+/// restores the drafts to the applied filter; Reset Filters (a
+/// full-width outline button below Apply, Nov 26, 2026 — the small
+/// plain link did not read as tappable) clears the filters.
+/// `onResetAll` clears every filter on the page (Activity: date +
+/// type); when nil (Past Weeks) Reset clears the date filter only.
 struct HistoryDateFilterCard: View {
     @Binding var draftFrom: String
     @Binding var draftTo: String
@@ -365,12 +366,16 @@ struct HistoryDateFilterCard: View {
                     .buttonStyle(PrimaryButtonStyle())
             }
 
-            HStack {
-                Spacer()
-                Button("Reset Filters") { (onResetAll ?? onClear)() }
-                    .buttonStyle(QuietButtonStyle())
-                Spacer()
-            }
+            // Nov 26, 2026 (owner — Past Weeks "Reset Filters"
+            // was plain centered muted text and did not read as a
+            // button): a full-width tertiary OUTLINE button, the
+            // same treatment as the Transactions Filters sheet's
+            // Reset — distinct from the solid-blue Apply above it,
+            // so no two adjacent buttons share a colour. Shared
+            // with General Activity (live-apply, no Apply there):
+            // the outline Reset reads as a button there too.
+            Button("Reset Filters") { (onResetAll ?? onClear)() }
+                .buttonStyle(OutlineButtonStyle())
 
             if !filter.periodLine.isEmpty {
                 MutedLine(text: filter.periodLine)

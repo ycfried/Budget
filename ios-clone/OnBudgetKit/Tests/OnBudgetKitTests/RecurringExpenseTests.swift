@@ -58,19 +58,21 @@ final class RecurringExpenseTests: XCTestCase {
         }
         // $160.00 a month stays $160.00 a month.
         XCTAssertEqual(expense(amount: 16000, frequency: .monthly).monthlyCents, 16000)
-        // $160.00 a week is $160.00 × 4.33 a month.
-        XCTAssertEqual(expense(amount: 16000, frequency: .weekly).monthlyCents, 69280)
+        // $160.00 a week is $160.00 × 52/12 a month — $693.33
+        // (owner, Nov 26, 2026: the 4.33 divisor read $692.80).
+        XCTAssertEqual(expense(amount: 16000, frequency: .weekly).monthlyCents, 69333)
         // $480.00 a quarter is $160.00 a month.
         XCTAssertEqual(expense(amount: 48000, frequency: .quarterly).monthlyCents, 16000)
         // $1,920.00 a year is $160.00 a month.
         XCTAssertEqual(expense(amount: 192000, frequency: .yearly).monthlyCents, 16000)
     }
 
-    func testWeeklyCentsSpreadsMonthlyOver433Weeks() {
+    func testWeeklyCentsSpreadsMonthlyOver52Weeks() {
         let household = UUID()
         let expense = RecurringExpense(id: UUID(), householdId: household, transactionId: UUID(),
                                        name: "HOA", amountCents: 16000, frequency: .monthly)
-        // $160.00 a month is ~$36.95 a week.
-        XCTAssertEqual(expense.weeklyCents, 3695)
+        // $160.00 a month is $36.92 a week (160 × 12/52 — owner,
+        // Nov 26, 2026: the 4.33 divisor read $36.95).
+        XCTAssertEqual(expense.weeklyCents, 3692)
     }
 }

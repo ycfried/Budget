@@ -947,11 +947,13 @@ public struct TransactionFilters: Equatable {
             return shown.filter { !$0.isInTrash && $0.kind == .charity }
                 .reduce(0) { $0 + $1.amountCents }
         }
-        // Build 65 (Tzedaka sheet): the shown rows are the income
-        // that accrued charity (money in) plus the gifts given
-        // (money out) — the total is their plain net sum, not the
-        // spending netting below (which only counts charges /
-        // fund charges / refunds and would read 0 here).
+        // Tzedaka filter (build 70, owner Nov 24, 2026): the
+        // shown rows are the gifts given (kind .charity) ONLY —
+        // income rows that accrued charity are NOT in this list,
+        // so the total is the plain sum of the shown gift rows.
+        // It is lower than the popup's Given + Pending by exactly
+        // the off-card cash gifts (Nov 26, 2026 — live $67.68),
+        // which Given includes but no transaction row carries.
         if status == .tzedaka {
             return shown.filter { !$0.isInTrash }
                 .reduce(0) { $0 + $1.amountCents }

@@ -126,8 +126,8 @@ public struct ExpensesListView: View {
         expenses.reduce(0) { $0 + $1.monthlyCents }
     }
 
-    /// The weekly cost — the monthly total spread over the plan's
-    /// 4.33 weeks per month, before the Calculator's holdback.
+    /// The weekly cost — the monthly total spread over the year's
+    /// 52 weeks (monthly × 12/52), before the Calculator's holdback.
     private var weeklyTotalCents: Int {
         expenses.reduce(0) { $0 + $1.weeklyCents }
     }
@@ -198,25 +198,17 @@ public struct ExpensesListView: View {
                         )
                         .fundCardShadow()
                     }
-                    // Build 78 (owner, Nov 25, 2026): the Add
-                    // button is a full-width solid-blue primary
-                    // (PrimaryButtonStyle, like "Show
-                    // Transactions" on the Weekly Budget sheet)
-                    // — the bare plus + blue text read as a
-                    // plain link. Admin only (tagging is
-                    // admin-only server-side). Below it, a second
-                    // button creates an expense from scratch
-                    // (no charge to tag) — a distinct tertiary
-                    // OUTLINE button, never a second solid-blue
-                    // primary next to the first.
+                    // Nov 26, 2026 (owner — ExpensesListView
+                    // flip, matching item 20's Calculator flip):
+                    // manual add is the MAIN way, so "Create a
+                    // New Expense" is the full-width solid-blue
+                    // primary on top and "Add Recurring Expense"
+                    // (tag a charge) is the distinct tertiary
+                    // OUTLINE button below it — never two
+                    // solid-blue primaries next to each other.
+                    // Admin only (tagging is admin-only
+                    // server-side).
                     if isAdmin {
-                        Button {
-                            showExpensePicker = true
-                        } label: {
-                            Label("Add Recurring Expense", systemImage: "plus.circle")
-                        }
-                        .buttonStyle(PrimaryButtonStyle())
-                        .accessibilityLabel("Add recurring expense")
                         Button {
                             newExpense = RecurringExpense(
                                 id: UUID(),
@@ -229,8 +221,15 @@ public struct ExpensesListView: View {
                         } label: {
                             Label("Create a New Expense", systemImage: "plus")
                         }
-                        .buttonStyle(OutlineButtonStyle())
+                        .buttonStyle(PrimaryButtonStyle())
                         .accessibilityLabel("Create a new recurring expense")
+                        Button {
+                            showExpensePicker = true
+                        } label: {
+                            Label("Add Recurring Expense", systemImage: "plus.circle")
+                        }
+                        .buttonStyle(OutlineButtonStyle())
+                        .accessibilityLabel("Add recurring expense")
                     }
                 }
             }
@@ -537,7 +536,18 @@ public struct ExpenseEditorSheet: View {
         }
         .padding()
         .frame(width: horizontalSizeClass == .regular ? 600 : nil)
-        .presentationDetents([.medium, .large])
+        // Nov 26, 2026 (owner — dead space below Save): the sheet
+        // sizes to its content (.presentationSizing(.fitted)) instead
+        // of the [.medium, .large] detents — at .large the ~545pt
+        // form left a big empty bottom, and at .medium the Save
+        // button sat below the fold. Fitted hugs the form (Name +
+        // Amount + How Often + Save + Remove) with no dead space;
+        // the ScrollView still scrolls when the keyboard is up, the
+        // error box appears, or the remove confirm opens — fitted
+        // re-measures as the content grows, up to the screen height.
+        // (Build 74's .medium/.large detents fixed the unreachable
+        // Save; fitted keeps that fix and removes the empty bottom.)
+        .presentationSizing(.fitted)
         .presentationDragIndicator(.visible)
         .presentationBackground(.white)
     }
@@ -551,9 +561,10 @@ public struct ExpenseEditorSheet: View {
 /// skeleton rows shaped like charge rows while loading, never
 /// the premature "No charges" empty state); rows carry the
 /// merchant icon (TransactionIconView, as in the Transactions
-/// list); the list shows 15 rows with Load More and a merchant
-/// search; and tapping a charge opens the editor as soon as
-/// the tag RPC returns (the editor no longer waits on the
+/// list); the list shows 30 rows with a one-tap Load More for the
+/// rest (Nov 26, 2026 — 15 up front took three taps to reach all
+/// 50) and a merchant search; and tapping a charge opens the editor
+/// as soon as the tag RPC returns (the editor no longer waits on the
 /// full refresh or the 400ms sleep — see onTagged / tagExpense).
 public struct ExpenseTagPickerSheet: View {
     @ObservedObject public var viewModel: FundsViewModel
@@ -562,12 +573,14 @@ public struct ExpenseTagPickerSheet: View {
     public let onClose: () -> Void
     @State private var isWorking = false
     /// The merchant search (build 78): filters the full
-    /// candidate list by name; the 15-row cap / Load More
+    /// candidate list by name; the 30-row first page / Load More
     /// applies to the filtered results.
     @State private var searchText = ""
-    /// How many rows are shown (build 78): 15 at first, Load
-    /// More reveals the next 15 until all are shown.
-    @State private var visibleCount = 15
+    /// How many rows are shown (Nov 26, 2026 — owner: 15 up
+    /// front meant three taps to reach all 50): 30 at first, and
+    /// Load More reveals ALL the rest in one tap. The 50-row cap
+    /// stays, as do the candidate criteria.
+    @State private var visibleCount = 30
     /// The candidate list, computed ONCE — not on every render
     /// (owner, Nov 25, 2026 — the picker lagged). `candidates`
     /// used to be a computed property: every body evaluation
@@ -738,13 +751,14 @@ public struct ExpenseTagPickerSheet: View {
                                 SheetActionDivider()
                             }
                         }
-                        // Load More (build 78): the list shows
-                        // 15 rows at first; this reveals the next
-                        // 15 until all candidates are shown. Only
-                        // while more rows remain.
+                        // Load More (Nov 26, 2026): the list shows
+                        // 30 rows at first; this reveals ALL the
+                        // rest in one tap (the old +15-at-a-time
+                        // took three taps to reach 50). Only while
+                        // more rows remain.
                         if filteredCandidates.count > visibleCount {
                             Button {
-                                visibleCount += 15
+                                visibleCount = filteredCandidates.count
                             } label: {
                                 Text("Load More (\(filteredCandidates.count - visibleCount) more)")
                                     .font(.system(size: 15, weight: .semibold))

@@ -399,7 +399,8 @@ public final class HomeViewModel: ObservableObject {
                     committedCents: income.filter { $0.status == "active" }.reduce(0) { $0 + $1.committedCents },
                     givenCents: givenAmounts.reduce(0, +) + cashGiftCents,
                     pendingGiftCents: pendingAmounts.reduce(0, +),
-                    defaultRateBp: settings?.defaultRateBp ?? 1000)
+                    defaultRateBp: settings?.defaultRateBp ?? 1000,
+                    cashGiftCents: cashGiftCents)
             } catch let error as OnBudgetError {
                 if error == .sessionExpired { appState.showSessionExpired(); return }
                 charityError = error
@@ -3556,6 +3557,17 @@ public struct TzedakaSheet: View {
                     .stroke(Color(hex: "#e5e7eb"), lineWidth: 1)
             )
             .fundCardShadow()
+            // Nov 26, 2026 (owner — Given did not match the
+            // Transactions Tzedaka filter total): Given includes
+            // off-card cash gifts, which have no transaction row,
+            // so the filter total is lower by exactly that amount.
+            // Say so here, only when there is an off-card gift —
+            // the numbers themselves are unchanged.
+            if summary.cashGiftCents > 0 {
+                Text("Given includes \(MoneyFormat.formatCents(summary.cashGiftCents)) given off-card, with no transaction row — that is why the Transactions list total is lower.")
+                    .font(.system(size: 13))
+                    .foregroundStyle(DesignTokens.muted)
+            }
             // The Tzedaka actions, as tappable rows (admin-only,
             // like the Funds page's Tzedaka card). Only these two:
             // Add to Tzedaka + Record a Donation. Record Income is

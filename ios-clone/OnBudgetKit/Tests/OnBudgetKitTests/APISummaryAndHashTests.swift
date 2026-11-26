@@ -165,6 +165,7 @@ final class APISummaryTests: XCTestCase {
                                              defaultRateBp: 1000, cashGiftCents: 6768)
         XCTAssertEqual(summary.committedCents, 10000) // 10% of 100000; Total unchanged by gifts
         XCTAssertEqual(summary.givenCents, 6968) // 200 verified gift + 6768 cash gift
+        XCTAssertEqual(summary.cashGiftCents, 6768) // stored, so the breakdowns can say so
         XCTAssertEqual(summary.pendingGiftCents, 0)
         XCTAssertEqual(summary.remainingCents, 3032) // Available falls by the cash gift
         // Without the cash-gift sum, Given reads 200 — the exact

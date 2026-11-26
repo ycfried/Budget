@@ -922,6 +922,18 @@ public struct FundsView: View {
                         }
                         FundsBreakdownRow("Total", value: MoneyFormat.formatCents(summary.committedCents))
                     }
+                    // Nov 26, 2026 (owner — Given did not match
+                    // the Transactions Tzedaka filter total): Given
+                    // includes off-card cash gifts, which have no
+                    // transaction row, so the filter total is lower
+                    // by exactly that amount. Say so here, only
+                    // when there is an off-card gift — the numbers
+                    // themselves are unchanged.
+                    if summary.cashGiftCents > 0 {
+                        Text("Given includes \(MoneyFormat.formatCents(summary.cashGiftCents)) given off-card, with no transaction row — that is why the Transactions list total is lower.")
+                            .font(.system(size: 13))
+                            .foregroundStyle(DesignTokens.muted)
+                    }
                     // Build 56 (owner, Nov 22, 2026): the Default
                     // Tzedaka Rate sits ABOVE the buttons now —
                     // right after the breakdown, like the Spending
@@ -2203,12 +2215,14 @@ public enum CalculatorFrequency: String, Codable, CaseIterable {
     }
 
     /// How many of this frequency fit in one month. Weekly uses
-    /// 4.33 — the plan's weeks-per-month, the same divisor as the
-    /// formula below — so a weekly item and the weekly suggestion
-    /// use one consistent month length.
+    /// 52/12 — 52 weeks in a year over 12 months, the exact month
+    /// length (not the 4.33 approximation — owner, Nov 26, 2026:
+    /// $160/wk is $693.33/mo, not $692.80), the same divisor as
+    /// the formula below — so a weekly item and the weekly
+    /// suggestion use one consistent month length.
     public var monthlyFactor: Double {
         switch self {
-        case .weekly: return 4.33
+        case .weekly: return 52.0 / 12.0
         case .monthly: return 1
         case .quarterly: return 1.0 / 3.0
         case .yearly: return 1.0 / 12.0
@@ -2463,8 +2477,11 @@ public struct WeeklyBudgetCalculatorContent: View {
     // MARK: - Formula
     //
     // (monthly income − expected charity − recurring charges)
-    // ÷ 4.33 weeks = weekly amount before lifestyle; the lifestyle
-    // holdback is then kept back. Household-size scaling
+    // spread over the year's 52 weeks (monthly × 12/52) = weekly
+    // amount before lifestyle; the lifestyle holdback is then
+    // kept back. (The old ÷ 4.33 divisor read $36.95/wk for
+    // $160/mo instead of $36.92 — owner, Nov 26, 2026.)
+    // Household-size scaling
     // (assumption, build 43 — the V2 plan says size scales "only
     // the variable week-to-week part" without giving the factor):
     // income and recurring charges are entered as HOUSEHOLD totals,
@@ -2510,7 +2527,7 @@ public struct WeeklyBudgetCalculatorContent: View {
     }
 
     private var weeklyBeforeHoldbackCents: Int {
-        Int((Double(monthlyRemainderCents) / 4.33).rounded())
+        Int((Double(monthlyRemainderCents) * 12.0 / 52.0).rounded())
     }
 
     private var suggestedWeeklyCents: Int {
@@ -2579,7 +2596,7 @@ public struct WeeklyBudgetCalculatorContent: View {
         .alert(TitleCase.apply(to: "Weekly Budget Calculator"), isPresented: $showFormulaInfo) {
             Button("OK") {}
         } message: {
-            Text("Monthly income, minus expected charity, minus recurring charges, divided by 4.33 weeks — then the lifestyle holdback is kept back. Household size shows the suggestion per person. This only suggests a weekly budget — your weekly allowance does not change. Income is shared with your household; the other entries save on this device automatically.")
+            Text("Monthly income, minus expected charity, minus recurring charges, spread over the year's 52 weeks — then the lifestyle holdback is kept back. Household size shows the suggestion per person. This only suggests a weekly budget — your weekly allowance does not change. Income is shared with your household; the other entries save on this device automatically.")
         }
     }
 

@@ -1358,6 +1358,14 @@ public struct CharitySummary: Equatable {
     public let givenCents: Int
     public let pendingGiftCents: Int
     public let defaultRateBp: Int
+    /// The part of Given that came from off-card cash gifts
+    /// (Nov 26, 2026 — owner: Given $761.29 did not match the
+    /// Transactions Tzedaka filter total $1,010.96, and the gap
+    /// was exactly this $67.68 "Leftover from previous Ma'aser
+    /// Sheet" cash gift, which has no transaction row. The
+    /// breakdowns surface it so the two totals reconcile on
+    /// sight; Given itself is unchanged).
+    public let cashGiftCents: Int
 
     /// Public memberwise init: the struct's stored properties are public
     /// but the synthesized memberwise init is internal, so the app target
@@ -1366,12 +1374,14 @@ public struct CharitySummary: Equatable {
         committedCents: Int,
         givenCents: Int,
         pendingGiftCents: Int,
-        defaultRateBp: Int
+        defaultRateBp: Int,
+        cashGiftCents: Int = 0
     ) {
         self.committedCents = committedCents
         self.givenCents = givenCents
         self.pendingGiftCents = pendingGiftCents
         self.defaultRateBp = defaultRateBp
+        self.cashGiftCents = cashGiftCents
     }
 
     /// Available (what is left to give) — committed, less what
@@ -1403,7 +1413,8 @@ public struct CharitySummary: Equatable {
             committedCents: committed,
             givenCents: verified.reduce(0) { $0 + $1.amountCents } + cashGiftCents,
             pendingGiftCents: pending.reduce(0) { $0 + $1.amountCents },
-            defaultRateBp: defaultRateBp
+            defaultRateBp: defaultRateBp,
+            cashGiftCents: cashGiftCents
         )
     }
 }
@@ -1495,8 +1506,11 @@ public struct MerchantRule: Equatable, Codable, Identifiable {
 /// uses (CalculatorFrequency in the app), kept here in the Kit so
 /// the model, the RPCs and the Calculator share one definition.
 /// `monthlyFactor` is the same divisor the Calculator uses — weekly
-/// 4.33 (the plan's weeks-per-month), monthly 1, quarterly 1/3,
-/// yearly 1/12 — so the Expenses list and the Calculator agree.
+/// 52/12 (52 weeks in a year over 12 months — the exact month
+/// length, not the 4.33 approximation, which read $692.80/mo for a
+/// $160/wk expense instead of $693.33 — owner, Nov 26, 2026),
+/// monthly 1, quarterly 1/3, yearly 1/12 — so the Expenses list
+/// and the Calculator agree.
 public enum ExpenseFrequency: String, Codable, CaseIterable, Sendable {
     case weekly
     case monthly
@@ -1515,7 +1529,7 @@ public enum ExpenseFrequency: String, Codable, CaseIterable, Sendable {
     /// How many of this frequency fit in one month.
     public var monthlyFactor: Double {
         switch self {
-        case .weekly: return 4.33
+        case .weekly: return 52.0 / 12.0
         case .monthly: return 1
         case .quarterly: return 1.0 / 3.0
         case .yearly: return 1.0 / 12.0
@@ -1572,9 +1586,11 @@ public struct RecurringExpense: Equatable, Codable, Identifiable, Sendable {
     }
 
     /// The expense's weekly cost, in cents — the monthly cost
-    /// spread over the plan's 4.33 weeks per month.
+    /// spread over the year's 52 weeks (monthly × 12/52 — the
+    /// 4.33 divisor read $36.95/wk for $160/mo instead of $36.92,
+    /// owner Nov 26, 2026).
     public var weeklyCents: Int {
-        Int((Double(monthlyCents) / 4.33).rounded())
+        Int((Double(monthlyCents) * 12.0 / 52.0).rounded())
     }
 }
 

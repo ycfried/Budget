@@ -507,7 +507,8 @@ public final class FundsViewModel: ObservableObject {
                 committedCents: incomeRows.filter { $0.status == "active" }.reduce(0) { $0 + $1.committedCents },
                 givenCents: givenAmounts.reduce(0, +) + cashGiftRows.reduce(0) { $0 + $1.amountCents },
                 pendingGiftCents: charityRows.filter { $0.state == .provisional }.reduce(0) { $0 + $1.amountCents },
-                defaultRateBp: defaultRate
+                defaultRateBp: defaultRate,
+                cashGiftCents: cashGiftRows.reduce(0) { $0 + $1.amountCents }
             )
             charityCashGifts = cashGiftRows
             charitySettings = settingsValue
