@@ -480,8 +480,11 @@ struct EmailAlertsView: View {
                 // Reload with an empty list (first load is gated
                 // above): connection-row skeletons, not the branded
                 // loader — the loader is not shaped like the rows.
-                connectionRowSkeleton
-                connectionRowSkeleton
+                // Enough rows to fill the visible page (owner,
+                // Nov 26, 2026), not just the two-row list.
+                ForEach(0..<connectionSkeletonRowCount, id: \.self) { _ in
+                    connectionRowSkeleton
+                }
             } else if !viewModel.connections.isEmpty {
                 ForEach(viewModel.connections) { connection in
                     connectionRow(connection)
@@ -568,16 +571,26 @@ struct EmailAlertsView: View {
     }
 
     /// Loading skeletons shaped like the loaded card (Nov 26,
-    /// 2026): "Connected Email" heading, two connection rows,
+    /// 2026): "Connected Email" heading, connection rows,
     /// Connect / Check buttons (admin only — `isAdmin` comes from
     /// the sync context, so the shape is known before the load).
-    /// Two rows is representative; the real row count is only
-    /// knowable after the load.
+    /// The rows fill the visible page (owner, Nov 26, 2026 —
+    /// skeletons must fill the whole visible page, not just the
+    /// two-row representative list); the card still settles
+    /// shorter once the real (smaller) list lands — that
+    /// one-time swap is accepted. A connection row is ~50pt tall
+    /// in a 12pt-spaced stack (62pt pitch); the rows start
+    /// ~160pt down the page (page title + card top + heading).
+    private var connectionSkeletonRowCount: Int {
+        SkeletonFill.rows(rowHeight: 62, above: 160)
+    }
+
     private var emailLoadingSkeleton: some View {
         VStack(alignment: .leading, spacing: 12) {
             SkeletonBlock(width: 150, height: 20)
-            connectionRowSkeleton
-            connectionRowSkeleton
+            ForEach(0..<connectionSkeletonRowCount, id: \.self) { _ in
+                connectionRowSkeleton
+            }
             if viewModel.isAdmin {
                 HStack(spacing: 12) {
                     SkeletonBlock(width: 140, height: 44, cornerRadius: 10)

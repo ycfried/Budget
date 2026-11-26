@@ -162,8 +162,11 @@ final class MerchantNamesSettingsViewModel: ObservableObject {
             // A failed merchant fetch leaves the popup / Known
             // Icons empty — the rules list still loads, so this
             // is not a page-level error; the lists just show
-            // their empty line.
+            // their empty line. The fetch still counts as
+            // resolved (`merchantsLoaded`), so the icon sections
+            // show their empty line instead of a skeleton forever.
             allMerchants = []
+            merchantsLoaded = true
         }
     }
 }
@@ -311,12 +314,22 @@ struct MerchantNamesSettingsView: View {
                         }
                         .buttonStyle(TertiaryButtonStyle())
                     } else if viewModel.isLoading && viewModel.rules.isEmpty {
-                        HStack {
-                            Spacer()
-                            BrandedLoader()
-                            Spacer()
+                        // Loading (owner, Nov 26, 2026 — skeletons
+                        // must fill the whole visible page): skeleton
+                        // rule rows shaped like the loaded rows
+                        // (40pt icon tile + two text lines +
+                        // chevron), enough to fill the viewport —
+                        // the centred BrandedLoader left the page
+                        // empty and the list + buttons jumped when
+                        // the rules landed.
+                        VStack(spacing: 0) {
+                            ForEach(0..<ruleSkeletonRowCount, id: \.self) { index in
+                                ruleSkeletonRow
+                                if index < ruleSkeletonRowCount - 1 {
+                                    Divider()
+                                }
+                            }
                         }
-                        .padding(.top, 8)
                     } else if viewModel.rules.isEmpty {
                         MutedLine(text: "No merchant rules yet. Rename a merchant from any transaction to teach the app.")
                     } else {
@@ -432,7 +445,31 @@ struct MerchantNamesSettingsView: View {
                 // the auto-guess, so there is no guessed logo to
                 // load any more.) Hidden entirely when empty —
                 // nothing to catch up on.
-                if !needsIcon.isEmpty {
+                // Loading (owner, Nov 26, 2026 — skeletons must
+                // fill the whole visible page): while the merchant
+                // list hasn't landed, skeleton rows hold this
+                // section's space — eight rows, the section's usual
+                // size — so it doesn't pop in and push the Known
+                // Icons card and the buttons down when it arrives.
+                // Once loaded it shows only when there is actually
+                // a merchant without an icon.
+                if !viewModel.merchantsLoaded {
+                    SettingsCard(title: "Merchants Without an Icon") {
+                        VStack(spacing: 0) {
+                            ForEach(0..<8, id: \.self) { index in
+                                HStack(spacing: 12) {
+                                    SkeletonBlock(width: 40, height: 40, cornerRadius: 10)
+                                    SkeletonBlock(width: 140, height: 14)
+                                    Spacer()
+                                }
+                                .padding(.vertical, 6)
+                                if index < 7 {
+                                    Divider()
+                                }
+                            }
+                        }
+                    }
+                } else if !needsIcon.isEmpty {
                     SettingsCard(title: "Merchants Without an Icon") {
                         // Build 68 (item 22): the explainer lives
                         // behind a blue ⓘ now, not as an inline
@@ -506,9 +543,18 @@ struct MerchantNamesSettingsView: View {
                 // sit together, and the add buttons stay at the
                 // very bottom of the page.
                 SettingsCard(title: "Known Icons") {
-                    if viewModel.merchantsLoading && viewModel.allMerchants.isEmpty {
+                    if !viewModel.merchantsLoaded {
+                        // Loading (owner, Nov 26, 2026): eight
+                        // skeleton rows hold the section's space
+                        // while the merchant list lands — the old
+                        // three rows left the section short and the
+                        // buttons below jumped when the real rows
+                        // arrived. Gated on the list having landed
+                        // (not on the fetch being in flight), so no
+                        // false "No merchant icons yet." flashes
+                        // before the fetch even starts.
                         VStack(spacing: 0) {
-                            ForEach(0..<3, id: \.self) { _ in
+                            ForEach(0..<8, id: \.self) { _ in
                                 HStack(spacing: 12) {
                                     SkeletonBlock(width: 40, height: 40, cornerRadius: 10)
                                     SkeletonBlock(width: 140, height: 14)
@@ -569,14 +615,25 @@ struct MerchantNamesSettingsView: View {
                 // blue on top, tertiary outline below) — never
                 // two buttons sharing a colour or look.
                 VStack(spacing: 12) {
-                    Button("Add a Rule") {
-                        startAddingRule()
+                    if viewModel.isLoading && viewModel.rules.isEmpty {
+                        // Loading (owner, Nov 26, 2026): skeleton
+                        // buttons hold the buttons' shape — the real
+                        // buttons stay hidden until the rules land,
+                        // so they never sit mid-page and jump down
+                        // when the list grows. 46pt tall, corner
+                        // radius 10, like the real buttons.
+                        SkeletonBlock(height: 46, cornerRadius: 10)
+                        SkeletonBlock(height: 46, cornerRadius: 10)
+                    } else {
+                        Button("Add a Rule") {
+                            startAddingRule()
+                        }
+                        .buttonStyle(PrimaryButtonStyle())
+                        Button("Choose a Merchant") {
+                            showingMerchantPicker = true
+                        }
+                        .buttonStyle(OutlineButtonStyle())
                     }
-                    .buttonStyle(PrimaryButtonStyle())
-                    Button("Choose a Merchant") {
-                        showingMerchantPicker = true
-                    }
-                    .buttonStyle(OutlineButtonStyle())
                 }
             }
             .sheet(isPresented: $showingMerchantPicker) {
@@ -586,6 +643,29 @@ struct MerchantNamesSettingsView: View {
                 iconSheetContent(kind)
             }
         }
+    }
+
+    /// One skeleton rule row shaped like the loaded rule row
+    /// (40pt icon tile + two text lines + chevron, same 10pt
+    /// icon/text gap and 10pt vertical padding). A rule row is
+    /// 61pt tall; the rules card starts ~220pt down the page
+    /// (back row + title + card title + explainer), so the count
+    /// fills the viewport on every device (owner, Nov 26, 2026).
+    private var ruleSkeletonRow: some View {
+        HStack(alignment: .top, spacing: 10) {
+            SkeletonBlock(width: 40, height: 40, cornerRadius: 8)
+            VStack(alignment: .leading, spacing: 2) {
+                SkeletonBlock(width: 140, height: 16)
+                SkeletonBlock(width: 200, height: 14)
+            }
+            Spacer()
+            SkeletonBlock(width: 8, height: 14, cornerRadius: 2)
+        }
+        .padding(.vertical, 10)
+    }
+
+    private var ruleSkeletonRowCount: Int {
+        SkeletonFill.rows(rowHeight: 61, above: 220)
     }
 
     /// The rule's subtitle — same three pieces as before (bank
@@ -665,9 +745,15 @@ struct MerchantNamesSettingsView: View {
             } onBack: {
                 showingMerchantPicker = false
             }
-            if viewModel.merchantsLoading && viewModel.allMerchants.isEmpty {
+            if !viewModel.merchantsLoaded {
+                // Loading (owner, Nov 26, 2026 — skeletons must
+                // fill the whole visible page): skeleton rows
+                // shaped like the merchant rows, enough to fill
+                // the sheet — five rows left it half empty at the
+                // large detent. A merchant row is 53pt tall; the
+                // sheet header sits ~80pt down.
                 VStack(spacing: 0) {
-                    ForEach(0..<5, id: \.self) { _ in
+                    ForEach(0..<SkeletonFill.rows(rowHeight: 53, above: 80), id: \.self) { _ in
                         HStack(spacing: 12) {
                             SkeletonBlock(width: 40, height: 40, cornerRadius: 10)
                             SkeletonBlock(width: 160, height: 14)

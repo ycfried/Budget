@@ -333,9 +333,20 @@ public struct ExpensesListView: View {
     }
 
     /// The loading skeleton (owner, Nov 26, 2026): the summary
-    /// card (two rows) plus three expense rows, in the same card
+    /// card (two rows) plus expense rows, in the same card
     /// chrome — see the body. The row count varies once loaded,
-    /// so three rows is the common shape, not an exact height.
+    /// so the skeleton carries enough rows to fill the visible
+    /// page (owner, Nov 26, 2026 — skeletons must fill the whole
+    /// visible page, not a fixed representative count of three);
+    /// the sheet still settles shorter once the real (smaller)
+    /// list lands — that one-time swap is accepted. An expense
+    /// row is 16pt tall with 10pt vertical padding (37pt pitch
+    /// with the divider); the rows start ~230pt down the sheet
+    /// (sheet header + summary card).
+    private var expensesSkeletonRowCount: Int {
+        SkeletonFill.rows(rowHeight: 37, above: 230)
+    }
+
     private var expensesListSkeleton: some View {
         VStack(alignment: .leading, spacing: 16) {
             VStack(spacing: 0) {
@@ -363,7 +374,7 @@ public struct ExpensesListView: View {
             )
             .fundCardShadow()
             VStack(spacing: 0) {
-                ForEach(0..<3, id: \.self) { index in
+                ForEach(0..<expensesSkeletonRowCount, id: \.self) { index in
                     HStack(spacing: 10) {
                         VStack(alignment: .leading, spacing: 2) {
                             SkeletonBlock(width: 140, height: 16)
@@ -372,7 +383,7 @@ public struct ExpensesListView: View {
                         SkeletonBlock(width: 90, height: 16)
                     }
                     .padding(.vertical, 10)
-                    if index < 2 {
+                    if index < expensesSkeletonRowCount - 1 {
                         SheetActionDivider()
                     }
                 }
@@ -782,7 +793,13 @@ public struct ExpenseTagPickerSheet: View {
                 // (owner, Nov 25, 2026): skeleton rows shaped
                 // like the charge rows (icon + two text lines),
                 // never a spinner, "Loading…" or a premature
-                // "No charges" empty state.
+                // "No charges" empty state. Enough rows to fill
+                // the visible page (owner, Nov 26, 2026 —
+                // skeletons must fill the whole visible page, not
+                // a fixed six); a charge row is 61pt tall and the
+                // list starts ~100pt down the sheet (search
+                // field + padding), so the count fills the sheet
+                // at its large detent on every device.
                 // Loading mandate (owner, Nov 26, 2026): the gate
                 // is the data being ready, NOT `viewModel.isLoading`
                 // — a background refresh (tagging an expense runs
@@ -792,7 +809,7 @@ public struct ExpenseTagPickerSheet: View {
                 // once the transactions are actually in.
                 ScrollView {
                     VStack(spacing: 0) {
-                        ForEach(0..<6, id: \.self) { _ in
+                        ForEach(0..<SkeletonFill.rows(rowHeight: 61, above: 100), id: \.self) { _ in
                             skeletonRow
                             SheetActionDivider()
                         }

@@ -1505,6 +1505,25 @@ public struct SkeletonBlock: View {
     }
 }
 
+/// Skeleton rows that fill the visible page (owner, Nov 26, 2026 —
+/// skeletons must fill the whole visible page, never a few rows
+/// floating in empty space). `rowHeight` is one loaded row's full
+/// height in points (content + vertical padding + divider);
+/// `above` is the height of the page content above the list
+/// (title, headers, explainer, card chrome). The count is computed
+/// from the screen height so it fills on every device — a fixed
+/// representative count (2 member rows, 3 expense rows) left the
+/// page looking empty. Rounded up so the last row reaches the
+/// bottom of the screen; the skeleton→content swap may still
+/// change height when the real content is shorter — that one-time
+/// swap is accepted, the loading state itself must not look empty.
+public enum SkeletonFill {
+    public static func rows(rowHeight: CGFloat, above: CGFloat) -> Int {
+        let visible = UIScreen.main.bounds.height - above
+        return max(3, Int(ceil(visible / rowHeight)))
+    }
+}
+
 /// Shimmer skeleton of one transaction row (40pt icon + two text
 /// lines + amount), matching the loaded Recent / Transactions row
 /// shape. Used for the Recent Transactions loading state on Home

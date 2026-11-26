@@ -529,8 +529,11 @@ struct MembersSettingsView: View {
                 // above): row skeletons, not the branded loader —
                 // the loader is not shaped like the rows and the
                 // Delete section below would jump when they land.
-                memberRowSkeleton
-                memberRowSkeleton
+                // Enough rows to fill the visible page (owner,
+                // Nov 26, 2026), not just the two-row household.
+                ForEach(0..<skeletonMemberRowCount, id: \.self) { _ in
+                    memberRowSkeleton
+                }
             } else if !viewModel.members.isEmpty {
                 ForEach(viewModel.members) { member in
                     memberRow(member)
@@ -632,13 +635,21 @@ struct MembersSettingsView: View {
 
     /// Loading skeletons shaped like the loaded card (Nov 26,
     /// 2026): invite-code note lines + chip row (owner only),
-    /// household line, Members heading, two member rows, Delete
+    /// household line, Members heading, member rows, Delete
     /// Account heading + button — so the card holds its shape
     /// until the first load resolves and nothing below a row moves
-    /// when the rows land. Two rows is the representative household
-    /// (owner + spouse); a larger household's card still grows
-    /// from skeleton to content — the row count is only knowable
-    /// after the load.
+    /// when the rows land. The member rows fill the visible page
+    /// (owner, Nov 26, 2026 — skeletons must fill the whole
+    /// visible page, not just the two-row representative
+    /// household); the card still settles shorter once the real
+    /// (smaller) list lands — that one-time swap is accepted.
+    /// A member row is 32pt tall in a 12pt-spaced stack (44pt
+    /// pitch); the rows start ~250pt down the page (page title +
+    /// invite + chip + household line + heading).
+    private var skeletonMemberRowCount: Int {
+        SkeletonFill.rows(rowHeight: 44, above: 250)
+    }
+
     private var membersLoadingSkeleton: some View {
         VStack(alignment: .leading, spacing: 12) {
             if viewModel.isOwner {
@@ -652,8 +663,9 @@ struct MembersSettingsView: View {
             }
             SkeletonBlock(width: 180, height: 16)
             SkeletonBlock(width: 90, height: 20)
-            memberRowSkeleton
-            memberRowSkeleton
+            ForEach(0..<skeletonMemberRowCount, id: \.self) { _ in
+                memberRowSkeleton
+            }
             SkeletonBlock(width: 130, height: 20)
             HStack {
                 Spacer()

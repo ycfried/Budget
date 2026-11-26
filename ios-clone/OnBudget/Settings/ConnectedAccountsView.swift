@@ -607,8 +607,11 @@ struct ConnectedAccountsView: View {
                 // Reload with an empty list (first load is gated
                 // above): account-row skeletons, not the branded
                 // loader — the loader is not shaped like the rows.
-                accountRowSkeleton
-                accountRowSkeleton
+                // Enough rows to fill the visible page (owner,
+                // Nov 26, 2026), not just the two-row list.
+                ForEach(0..<accountSkeletonRowCount, id: \.self) { _ in
+                    accountRowSkeleton
+                }
             } else if !viewModel.rows.isEmpty {
                 ForEach(viewModel.rows) { row in
                     accountRow(row)
@@ -682,10 +685,18 @@ struct ConnectedAccountsView: View {
     /// 2026): Connect/Sync buttons + auto-sync toggle row (admin
     /// only — `isAdmin` comes from the sync context, so the shape
     /// is known before the load), sync line, "Connected Accounts"
-    /// heading, two account rows. Two rows is representative; the
-    /// real row count is only knowable after the load, so a
-    /// household with more accounts still sees the card grow from
-    /// skeleton to content.
+    /// heading, account rows. The rows fill the visible page
+    /// (owner, Nov 26, 2026 — skeletons must fill the whole
+    /// visible page, not just the two-row representative list);
+    /// the card still settles shorter once the real (smaller)
+    /// list lands — that one-time swap is accepted. An account
+    /// row is ~50pt tall in a 12pt-spaced stack (62pt pitch);
+    /// the rows start ~240pt down the page (page title + buttons
+    /// + toggle + sync line + heading).
+    private var accountSkeletonRowCount: Int {
+        SkeletonFill.rows(rowHeight: 62, above: 240)
+    }
+
     private var connectedLoadingSkeleton: some View {
         VStack(alignment: .leading, spacing: 12) {
             if viewModel.isAdmin {
@@ -697,8 +708,9 @@ struct ConnectedAccountsView: View {
             }
             SkeletonBlock(width: 200, height: 16)
             SkeletonBlock(width: 170, height: 20)
-            accountRowSkeleton
-            accountRowSkeleton
+            ForEach(0..<accountSkeletonRowCount, id: \.self) { _ in
+                accountRowSkeleton
+            }
         }
     }
 

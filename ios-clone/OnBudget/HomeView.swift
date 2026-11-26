@@ -359,10 +359,16 @@ public final class HomeViewModel: ObservableObject {
             allowanceErrorValue = .unknown("Could not load your allowance setting.")
         }
 
-        // Transactions page: recent 6, purchases count, charity
-        // gifts. A failure here is an error state, never a silent
-        // empty list. The charity summary is derived from the same
-        // rows + the concurrently fetched income and settings.
+        // Transactions page: the full 100-row page, purchases
+        // count, charity gifts. A failure here is an error state,
+        // never a silent empty list. The charity summary is derived
+        // from the same rows + the concurrently fetched income and
+        // settings. The view shows the device-appropriate prefix
+        // of these rows (owner, Nov 26, 2026 — each screen gets
+        // the right amount for its device: 6 on iPhone, enough to
+        // fill the screen on iPad), so the view model keeps the
+        // whole page here, not a fixed prefix — rotating the iPad
+        // re-slices the already-loaded rows, no refetch.
         var txRows: [Transaction] = []
         var txError: OnBudgetError?
         do {
@@ -459,7 +465,9 @@ public final class HomeViewModel: ObservableObject {
             allowanceError = allowanceErrorValue
         }
         if txError == nil {
-            recent = .loaded(Array(txRows.prefix(6)))
+            // The whole fetched page — the view takes the
+            // device-appropriate prefix (see recentRowCount).
+            recent = .loaded(txRows)
             if let weekStart {
                 let weekRows = txRows.filter { AppDates.isInWeek($0.date, weekStart: weekStart) }
                 // Transfers never count as purchases (owner, Nov 14,
@@ -818,6 +826,22 @@ public struct HomeView: View {
     /// (owner, Nov 15, 2026 — the hero and stat-card amounts +
     /// icons were still too small on iPad). iPhone is untouched.
     private var isIPad: Bool { horizontalSizeClass == .regular }
+
+    /// Recent Transactions shown on Home (owner, Nov 26, 2026 —
+    /// each screen gets the right amount for its device): iPhone
+    /// keeps 6; iPad shows enough rows to fill the screen below
+    /// the cards and Past Weeks. A loaded row is 44pt tall in a
+    /// 10pt-spaced stack (54pt pitch) and the list starts ~520pt
+    /// down the iPad page (two-column cards + quiet rows + Past
+    /// Weeks + header) — so 13 rows on an 11" iPad, 12 on mini,
+    /// 16 on 12.9". The same count drives the loading skeleton,
+    /// so skeleton and content match exactly and nothing moves
+    /// when the rows land. The count is stable across rotation
+    /// (longest edge), so turning the iPad only re-slices the
+    /// already-loaded rows — no refetch.
+    private var recentRowCount: Int {
+        isIPad ? SkeletonFill.rows(rowHeight: 54, above: 520) : 6
+    }
 
     public init(appState: AppViewModel, householdId: UUID) {
         self.appState = appState
@@ -2883,13 +2907,15 @@ private struct HomeCardSkeletonBody: View {
             case .loading:
                 // Shimmer skeletons shaped like the loaded rows —
                 // no spinner, no "Loading…" line (owner loading
-                // language, Nov 12, 2026). Ten rows (owner, Nov 15,
-                // 2026): three rows left empty white space below
-                // them while loading — ten fills the viewport on
-                // iPhone and iPad portrait, so there is no gap at
-                // the bottom during loading.
+                // language, Nov 12, 2026). The same adaptive count
+                // as the loaded rows (owner, Nov 26, 2026 — each
+                // screen gets the right amount for its device), so
+                // skeleton and content match exactly and the page
+                // never shrinks or grows when the rows land. (The
+                // old fixed 10 came from Nov 15, 2026, when three
+                // rows left empty white space below while loading.)
                 VStack(spacing: 12) {
-                    ForEach(0..<10, id: \.self) { _ in TransactionRowSkeleton() }
+                    ForEach(0..<recentRowCount, id: \.self) { _ in TransactionRowSkeleton() }
                 }
                 .padding(.vertical, 12)
                 .accessibilityLabel("Loading recent transactions")
@@ -2909,7 +2935,11 @@ private struct HomeCardSkeletonBody: View {
                         .font(.system(size: 15))
                         .foregroundStyle(Color(hex: "#6b7280"))
                 } else {
-                    ForEach(rows) { row in
+                    // The device-appropriate prefix (owner, Nov 26,
+                    // 2026): the view model keeps the whole fetched
+                    // page, so rotating the iPad re-slices the
+                    // already-loaded rows — no refetch.
+                    ForEach(Array(rows.prefix(recentRowCount))) { row in
                         recentRow(row)
                     }
                 }
@@ -3138,15 +3168,14 @@ public struct WeeklySheet: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     /// Build 65 (owner, Nov 23, 2026 — item 4): the action rows
-    /// below the numbers — Adjust This Week's Budget, Recurring
-    /// Expenses, Weekly Budget Calculator. Build 68 (item 29):
-    /// Top Up Budget + Set This Week's Budget merged into the one
-    /// Adjust This Week's Budget sheet.
+    /// below the numbers — Adjust This Week's Budget, Weekly
+    /// Budget Calculator. (The Recurring Expenses row is gone —
+    /// owner, Nov 26, 2026: its content already lives inside the
+    /// Calculator, whose rows now open the editor directly.)
+    /// Build 68 (item 29): Top Up Budget + Set This Week's
+    /// Budget merged into the one Adjust This Week's Budget sheet.
     @State private var showAdjustWeeklyBudget = false
     @State private var showCalculator = false
-    /// Build 67 (owner, Nov 23, 2026): the Expenses list, opened
-    /// from the Recurring Expenses row in the actions card below.
-    @State private var showExpenses = false
     /// The Funds view model the Adjust This Week's Budget form
     /// needs (see the note above the Weekly sheet section). Built
     /// lazily, once per presentation.
@@ -3336,62 +3365,22 @@ public struct WeeklySheet: View {
                 )
             }
         }
-        // Recurring Expenses (build 67, owner Nov 23, 2026): the
-        // Expenses list. Refreshes Home on dismiss, so removing
-        // an expense (its transaction counts as a purchase again)
-        // shows in the week figures at once.
-        .sheet(isPresented: $showExpenses, onDismiss: { onChanged?() }) {
-            if let fundsViewModel {
-                ExpensesListView(
-                    expenses: fundsViewModel.liveExpenses,
-                    isAdmin: appState.isAdmin,
-                    onSave: { expense, name, amountCents, frequency in
-                        await fundsViewModel.updateExpense(expense, name: name, amountCents: amountCents, frequency: frequency)
-                    },
-                    onRemove: { expense in
-                        await fundsViewModel.removeExpense(expense)
-                    },
-                    onClose: { showExpenses = false },
-                    // Build 78: the sheet's own Add flow — the
-                    // same tag-a-charge path the Calculator uses.
-                    // The picker reads the view model live (see
-                    // ExpensesListView.viewModel).
-                    viewModel: fundsViewModel,
-                    onTag: { transaction in
-                        await fundsViewModel.tagExpense(transaction, reason: "")
-                    },
-                    onCreate: { name, amountCents, frequency in
-                        await fundsViewModel.createExpense(name: name, amountCents: amountCents, frequency: frequency) != nil
-                    }
-                )
-                // Build 68 (item 6): white presentation background.
-                .presentationBackground(.white)
-            }
-        }
-    }
-
-    /// The Recurring Expenses row's subtitle (build 67): the
-    /// count + the monthly total — "2 expenses · $310.00 a
-    /// month". "No expenses tagged yet" while the list is empty
-    /// (or still loading).
-    private var expensesSubtitle: String {
-        let live = fundsViewModel?.liveExpenses ?? []
-        guard !live.isEmpty else { return "No expenses tagged yet" }
-        let monthly = live.reduce(0) { $0 + $1.monthlyCents }
-        // Build 68 (frequency format): the frequency is a compact
-        // suffix on the amount — "$160.00/mo", never "a month".
-        return "\(live.count) \(live.count == 1 ? "expense" : "expenses") · \(MoneyFormat.formatCents(monthly))/mo"
     }
 
     /// The week-action rows (build 65, item 4): Adjust This
     /// Week's Budget for admins (build 68, item 29 — Top Up
-    /// Budget + Set This Week's Budget merged into one sheet),
-    /// Recurring Expenses and the Weekly Budget Calculator for
-    /// every role. When the Funds view model cannot be built
-    /// (household not yet known — in practice never while Home is
-    /// showing), the admin row falls back to the Spending fund on
-    /// the Funds page, where the same action lives; the sheet
-    /// itself never strands the user.
+    /// Budget + Set This Week's Budget merged into one sheet)
+    /// and the Weekly Budget Calculator for every role. (The
+    /// Recurring Expenses row is gone — owner, Nov 26, 2026:
+    /// its content already lives inside the Calculator, whose
+    /// rows now open the editor directly.) When the Funds view
+    /// model cannot be built (household not yet known — in
+    /// practice never while Home is showing), the admin row falls
+    /// back to the Spending fund on the Funds page, where the
+    /// same action lives; the sheet itself never strands the
+    /// user. The divider sits between the two rows, so a member
+    /// (no Adjust row) sees no stray divider at the top of the
+    /// card.
     /// Build 68 (item 10): all the row icons share one colour —
     /// brand blue — so the card reads as one consistent list.
     private var weeklyActionsCard: some View {
@@ -3411,22 +3400,10 @@ public struct WeeklySheet: View {
                     }
                 }
             }
+            if appState.isAdmin && appState.householdId != nil {
+                SheetActionDivider()
+            }
             if appState.householdId != nil {
-                SheetActionDivider()
-                // Build 67 (owner, Nov 23, 2026): Recurring
-                // Expenses — visible to every role, like the
-                // Calculator (members see the list read-only; only
-                // the admin can tag or edit). It sits above the
-                // Calculator because the Calculator reads from it.
-                SheetActionRow(
-                    icon: "house",
-                    iconColor: DesignTokens.primary,
-                    title: "Recurring Expenses",
-                    subtitle: expensesSubtitle
-                ) {
-                    showExpenses = true
-                }
-                SheetActionDivider()
                 SheetActionRow(
                     // Build 68 (item 11): the "calculator" SF
                     // Symbol renders NOTHING on device (verified

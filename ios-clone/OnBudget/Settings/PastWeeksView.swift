@@ -251,22 +251,30 @@ struct PastWeeksView: View {
                         // the same white card + shadow + 12pt
                         // padding, the heading + all four metric
                         // rows, so the card holds its shape until
-                        // the list renders. The week count is
-                        // unknowable until the load, so one block
-                        // stands in for the list; later blocks grow
-                        // the card downward, below the fold.
-                        VStack(alignment: .leading, spacing: 8) {
-                            SkeletonBlock(width: 200, height: 20, cornerRadius: 6)
-                            skeletonMetricRow(labelWidth: 80)
-                            skeletonMetricRow(labelWidth: 70)
-                            skeletonMetricRow(labelWidth: 120)
-                            skeletonMetricRow(labelWidth: 70)
+                        // the list renders. Enough blocks to fill
+                        // the visible page (owner, Nov 26, 2026 —
+                        // skeletons must fill the whole visible
+                        // page, not a single block); a week block
+                        // is ~148pt tall in a 12pt-spaced stack
+                        // (160pt pitch) and the list starts ~330pt
+                        // down the page (back row + title + date
+                        // filter card + card title).
+                        VStack(alignment: .leading, spacing: 12) {
+                            ForEach(0..<SkeletonFill.rows(rowHeight: 160, above: 330), id: \.self) { _ in
+                                VStack(alignment: .leading, spacing: 8) {
+                                    SkeletonBlock(width: 200, height: 20, cornerRadius: 6)
+                                    skeletonMetricRow(labelWidth: 80)
+                                    skeletonMetricRow(labelWidth: 70)
+                                    skeletonMetricRow(labelWidth: 120)
+                                    skeletonMetricRow(labelWidth: 70)
+                                }
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(12)
+                                .background(Color.white)
+                                .cornerRadius(12)
+                                .fundCardShadow()
+                            }
                         }
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(12)
-                        .background(Color.white)
-                        .cornerRadius(12)
-                        .fundCardShadow()
                     } else if let error = viewModel.loadError {
                         DismissableErrorBox(error) { viewModel.loadError = nil }
                     } else if viewModel.weeks.isEmpty {

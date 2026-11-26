@@ -2384,18 +2384,30 @@ public struct WeeklyBudgetCalculatorSheet: View {
     }
 
     public var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
-                SheetHeader(title: TitleCase.apply(to: "Weekly Budget Calculator"), onClose: onClose)
-                WeeklyBudgetCalculatorContent(householdId: householdId, charityName: charityName, viewModel: viewModel)
-            }
-            .padding()
+        // Owner, Nov 26, 2026 (Calculator items 1 + 3): the
+        // SheetHeader AND the suggestion sit fixed above the
+        // scrolling inputs — the header used to scroll away with
+        // the content, and the suggestion scrolled away when the
+        // user edited inputs further down, so the result they
+        // were working toward vanished. The ScrollView now lives
+        // inside WeeklyBudgetCalculatorContent (below the fixed
+        // suggestion); the sheet itself is just the header +
+        // content, so both detents still size the sheet and the
+        // inputs scroll within it.
+        VStack(alignment: .leading, spacing: 16) {
+            SheetHeader(title: TitleCase.apply(to: "Weekly Budget Calculator"), onClose: onClose)
+            WeeklyBudgetCalculatorContent(householdId: householdId, charityName: charityName, viewModel: viewModel)
         }
+        .padding()
         .background(DesignTokens.background)
-        // iPad width (owner, Nov 12, 2026): 600pt in the regular
-        // size class, full-width on iPhone — same treatment as the
-        // rename sheet and the Add to Charity popup.
-        .frame(width: horizontalSizeClass == .regular ? 600 : nil)
+        // iPad width (owner, Nov 26, 2026 — the sheet felt too
+        // thin/narrow at 600pt, ~59% of a 1024pt iPad): 800pt in
+        // the regular size class, full-width on iPhone — the
+        // rename sheet and the Add to Charity popup keep their
+        // 600pt. 800 leaves a modest margin on every iPad
+        // (112pt a side on an 11" in portrait) without touching
+        // the edges.
+        .frame(width: horizontalSizeClass == .regular ? 800 : nil)
         // Build 68 (item 9): fitted detents, not a full page —
         // the content is a ScrollView, so it works in a compact
         // popup on iPad.
@@ -2416,6 +2428,7 @@ public struct WeeklyBudgetCalculatorContent: View {
     /// Expense" option tags through it. Non-optional (see the
     /// Sheet above: `@ObservedObject` cannot wrap an Optional).
     @ObservedObject public var viewModel: FundsViewModel
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     /// The expenses the Calculator reads: live from the view
     /// model. (Build 67's `expenses` snapshot parameter is gone —
     /// the view model is the single live source now.)
@@ -2658,24 +2671,66 @@ public struct WeeklyBudgetCalculatorContent: View {
         // whole Calculator at once when the data lands.
         VStack(alignment: .leading, spacing: 20) {
             if viewModel.calculatorDataReady {
+                // Owner, Nov 26, 2026 (Calculator item 3): the
+                // suggestion is the answer — it stays at the TOP
+                // and FIXED, directly below the sheet header, so
+                // it stays visible while the inputs below scroll.
+                // It used to be the first item inside the
+                // ScrollView and scrolled away when the user
+                // edited inputs further down and could not see
+                // the result update.
                 suggestionBlock
                 Divider()
-                // Build 77 (owner, Nov 25, 2026): Lifestyle +
-                // Household Size sit at the TOP, above Expected
-                // Income / Recurring Expenses — income and expenses
-                // come later. Order only; values and behaviour
-                // unchanged.
-                lifestyleSection
-                Divider()
-                householdSizeSection
-                Divider()
-                incomeSection
-                Divider()
-                chargesSection
-                Divider()
-                charitySection
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 20) {
+                        // Build 77 (owner, Nov 25, 2026): Lifestyle +
+                        // Household Size sit at the TOP, above Expected
+                        // Income / Recurring Expenses — income and expenses
+                        // come later. Order only; values and behaviour
+                        // unchanged.
+                        lifestyleSection
+                        Divider()
+                        householdSizeSection
+                        Divider()
+                        // Owner, Nov 26, 2026 (Calculator item 2):
+                        // income and expenses read as two separate
+                        // parts — each in its own card (the Settings
+                        // card chrome: white, hairline border), so
+                        // the two lists no longer run together
+                        // separated only by a thin Divider. Content,
+                        // wording, buttons, totals and behaviour are
+                        // unchanged — only the container. The other
+                        // sections stay plain, and no Divider touches
+                        // the cards (the card edge is the separator).
+                        SettingsCard(title: nil) {
+                            incomeSection
+                        }
+                        SettingsCard(title: nil) {
+                            chargesSection
+                        }
+                        Divider()
+                        charitySection
+                    }
+                }
+                // Owner, Nov 26, 2026 (Calculator item 1): the
+                // grey scroll bar is gone — it sat floating
+                // mid-sheet (the sheet is narrower than the
+                // screen) instead of at the screen's right edge.
+                // This sheet only; no other ScrollView changes.
+                .scrollIndicators(.hidden)
             } else {
-                calculatorSkeleton
+                // Loading: the suggestion skeleton stays fixed on
+                // top (mirroring the fixed suggestion) and the
+                // input skeletons scroll below — the whole sheet
+                // still shows the full-page skeleton until the
+                // data lands, never a fixed suggestion over empty
+                // inputs below it.
+                suggestionSkeleton
+                Divider()
+                ScrollView {
+                    inputsSkeleton
+                }
+                .scrollIndicators(.hidden)
             }
         }
         .accessibilityIdentifier("funds.weeklyBudgetCalculator")
@@ -2700,42 +2755,69 @@ public struct WeeklyBudgetCalculatorContent: View {
         }
     }
 
-    /// The loading skeleton (owner, Nov 26, 2026): the same
-    /// sections, in the same order and spacing, as skeleton
-    /// blocks — the suggestion (title + big amount + muted
-    /// line), then each section's header + rows + total — so
-    /// the sheet holds its shape until the data lands and the
-    /// whole Calculator reveals at once. The row counts vary
-    /// once loaded (one household has no income rows, another
-    /// has five), so the skeleton carries two rows per list —
-    /// the common shape, not an exact height.
-    private var calculatorSkeleton: some View {
+    /// Skeleton rows per Calculator list (owner, Nov 26, 2026 —
+    /// skeletons must fill the whole visible page): two rows per
+    /// list already fills an iPhone, and on iPad the two lists
+    /// carry five extra rows each (~320pt more). A list row is
+    /// 20pt tall in a 12pt-spaced stack (32pt pitch). See
+    /// `inputsSkeleton` for the full shape.
+    private var calculatorIncomeSkeletonRows: Int { horizontalSizeClass == .regular ? 7 : 2 }
+    private var calculatorChargesSkeletonRows: Int { horizontalSizeClass == .regular ? 7 : 2 }
+
+    /// The suggestion skeleton (owner, Nov 26, 2026 —
+    /// Calculator item 3): the fixed suggestion's mirror — title
+    /// + big amount + muted line — shown fixed above the
+    /// scrolling inputs while loading, exactly where the loaded
+    /// suggestion sits once the data lands.
+    private var suggestionSkeleton: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            SkeletonBlock(width: 220, height: 22)
+            SkeletonBlock(width: 160, height: 36)
+            SkeletonBlock(width: 260, height: 16)
+        }
+    }
+
+    /// The input-section skeletons (owner, Nov 26, 2026): the
+    /// same sections, in the same order and spacing, as skeleton
+    /// blocks — Lifestyle, Household Size, then Expected Income
+    /// and Recurring Expenses each in their own card (mirroring
+    /// the loaded cards, Calculator item 2), then Expected
+    /// Tzedaka — so the sheet holds its shape until the data
+    /// lands and the whole Calculator reveals at once. The row
+    /// counts vary once loaded (one household has no income rows,
+    /// another has five), so the skeleton carries enough rows per
+    /// list to fill the visible page (owner, Nov 26, 2026 —
+    /// skeletons must fill the whole visible page, not a fixed
+    /// representative count): two rows per list already fills
+    /// an iPhone (~865pt with the sheet header), and on iPad
+    /// the two lists carry five extra rows each (~320pt more).
+    /// A list row is 20pt tall in a 12pt-spaced stack (32pt
+    /// pitch).
+    private var inputsSkeleton: some View {
         VStack(alignment: .leading, spacing: 20) {
-            VStack(alignment: .leading, spacing: 8) {
-                SkeletonBlock(width: 220, height: 22)
-                SkeletonBlock(width: 160, height: 36)
-                SkeletonBlock(width: 260, height: 16)
-            }
-            Divider()
             VStack(alignment: .leading, spacing: 12) {
                 SkeletonBlock(width: 120, height: 22)
                 SkeletonBlock(height: 52)
             }
             Divider()
             SkeletonBlock(width: 200, height: 22)
-            Divider()
-            VStack(alignment: .leading, spacing: 12) {
-                SkeletonBlock(width: 160, height: 22)
-                SkeletonBlock(height: 20)
-                SkeletonBlock(height: 20)
-                SkeletonBlock(width: 140, height: 22)
+            SettingsCard(title: nil) {
+                VStack(alignment: .leading, spacing: 12) {
+                    SkeletonBlock(width: 160, height: 22)
+                    ForEach(0..<calculatorIncomeSkeletonRows, id: \.self) { _ in
+                        SkeletonBlock(height: 20)
+                    }
+                    SkeletonBlock(width: 140, height: 22)
+                }
             }
-            Divider()
-            VStack(alignment: .leading, spacing: 12) {
-                SkeletonBlock(width: 180, height: 22)
-                SkeletonBlock(height: 20)
-                SkeletonBlock(height: 20)
-                SkeletonBlock(width: 140, height: 22)
+            SettingsCard(title: nil) {
+                VStack(alignment: .leading, spacing: 12) {
+                    SkeletonBlock(width: 180, height: 22)
+                    ForEach(0..<calculatorChargesSkeletonRows, id: \.self) { _ in
+                        SkeletonBlock(height: 20)
+                    }
+                    SkeletonBlock(width: 140, height: 22)
+                }
             }
             Divider()
             VStack(alignment: .leading, spacing: 12) {
@@ -2868,14 +2950,35 @@ public struct WeeklyBudgetCalculatorContent: View {
             } else {
                 ForEach(liveExpenses) { expense in
                     HStack(spacing: 4) {
-                        Text(expense.name)
-                            .font(.system(size: 15, weight: .semibold))
-                            .foregroundStyle(DesignTokens.ink)
-                            .lineLimit(1)
-                        Spacer()
-                        Text("\(MoneyFormat.formatCents(expense.amountCents))\(expense.frequency.shortSuffix)")
-                            .font(.system(size: 15, weight: .semibold))
-                            .foregroundStyle(DesignTokens.ink)
+                        // Owner, Nov 26, 2026: tap a row to EDIT
+                        // that expense — the "Recurring Expenses"
+                        // row on the Weekly Budget popup is gone
+                        // (its only job was opening the full list
+                        // for editing), so this is now the edit
+                        // path. The trash stays a separate button
+                        // beside it, never inside the edit tap
+                        // target. Members stay read-only: the
+                        // button is disabled for them, and the
+                        // editor is admin-only server-side, same
+                        // as the create/tag flows.
+                        Button {
+                            editorExpense = expense
+                        } label: {
+                            HStack(spacing: 4) {
+                                Text(expense.name)
+                                    .font(.system(size: 15, weight: .semibold))
+                                    .foregroundStyle(DesignTokens.ink)
+                                    .lineLimit(1)
+                                Spacer()
+                                Text("\(MoneyFormat.formatCents(expense.amountCents))\(expense.frequency.shortSuffix)")
+                                    .font(.system(size: 15, weight: .semibold))
+                                    .foregroundStyle(DesignTokens.ink)
+                            }
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(!viewModel.context.isAdmin)
+                        .accessibilityLabel("Edit \(expense.name)")
                         // Build 78 (owner, Nov 25, 2026): delete
                         // from the Calculator — the red trash,
                         // mirroring the Expected Income rows'
@@ -2948,11 +3051,11 @@ public struct WeeklyBudgetCalculatorContent: View {
         .alert("Recurring Expenses", isPresented: $showChargesInfo) {
             Button("OK") {}
         } message: {
-            // Build 78 (owner, Nov 25, 2026): removal is now
-            // possible here too (the trash on each row), so the
-            // old "Manage them from Recurring Expenses…" is
-            // wrong.
-            Text("From your tagged expenses. Remove one here with its trash, or manage them from Recurring Expenses on the Weekly Budget sheet.")
+            // Owner, Nov 26, 2026: the "Recurring Expenses" row
+            // on the Weekly Budget popup is gone — there is no
+            // separate list to manage them from anymore. Tap a
+            // row here to edit it; the trash removes it.
+            Text("From your tagged expenses. Tap one to edit it, or remove one here with its trash.")
         }
         // Build 78 (owner, Nov 25, 2026): the delete confirm —
         // a destructive dialog (soft-red Remove Expense primary,

@@ -323,13 +323,18 @@ struct ActivityView: View {
     }
 
     /// Build 99 (loading audit): skeleton of the activity list
-    /// while the first load runs — two day groups, each a heading
+    /// while the first load runs — day groups, each a heading
     /// line plus three rows shaped like the loaded rows (muted
     /// dot + bold title + detail + time), so the entries swap in
-    /// place under the filter card.
+    /// place under the filter card. Enough groups to fill the
+    /// visible page (owner, Nov 26, 2026 — skeletons must fill
+    /// the whole visible page, not a fixed two); a day group is
+    /// ~218pt tall in a 16pt-spaced stack (234pt pitch) and the
+    /// list starts ~270pt down the page (back row + title +
+    /// chip row + date filter card).
     private var activityLoadingSkeleton: some View {
         VStack(alignment: .leading, spacing: 16) {
-            ForEach(0..<2, id: \.self) { _ in
+            ForEach(0..<SkeletonFill.rows(rowHeight: 234, above: 270), id: \.self) { _ in
                 VStack(alignment: .leading, spacing: 8) {
                     SkeletonBlock(width: 140, height: 20)
                     ForEach(0..<3, id: \.self) { _ in

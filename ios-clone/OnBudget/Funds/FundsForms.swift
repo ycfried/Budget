@@ -619,6 +619,14 @@ public struct FundRequestQueue: View {
         self.viewModel = viewModel
     }
 
+    /// Skeleton request rows that fill the visible page (owner,
+    /// Nov 26, 2026 — skeletons must fill the whole visible page,
+    /// not a fixed three). A request row is 29pt tall and the
+    /// list starts ~450pt down the sheet (the Ask form above it).
+    private var fundRequestsSkeletonRowCount: Int {
+        SkeletonFill.rows(rowHeight: 29, above: 450)
+    }
+
     public var body: some View {
         FundsCard {
             VStack(alignment: .leading, spacing: 12) {
@@ -632,14 +640,19 @@ public struct FundRequestQueue: View {
                     // they land, and the old body flashed "No fund
                     // requests yet." and then grew rows. Skeleton
                     // rows shaped like request rows hold the space.
-                    ForEach(0..<3, id: \.self) { index in
+                    // Enough rows to fill the visible page (owner,
+                    // Nov 26, 2026 — skeletons must fill the whole
+                    // visible page, not a fixed three); a request
+                    // row is 29pt tall and the list starts ~450pt
+                    // down the sheet (the Ask form above it).
+                    ForEach(0..<fundRequestsSkeletonRowCount, id: \.self) { index in
                         HStack {
                             SkeletonBlock(width: 200, height: 16)
                             Spacer()
                             SkeletonBlock(width: 24, height: 16)
                         }
                         .padding(.vertical, 6)
-                        if index < 2 {
+                        if index < fundRequestsSkeletonRowCount - 1 {
                             Divider()
                         }
                     }
