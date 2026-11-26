@@ -2396,6 +2396,10 @@ public struct WeeklyBudgetCalculatorContent: View {
     /// The ⓘ beside Recurring Expenses opens the tagged-expenses
     /// note (build 68, item 14): the line used to sit inline.
     @State private var showChargesInfo = false
+    /// The ⓘ beside Lifestyle and Expected Income (owner,
+    /// Nov 26, 2026): short alerts explaining each section.
+    @State private var showLifestyleInfo = false
+    @State private var showIncomeInfo = false
     /// True once the stored inputs have loaded — saves are
     /// suppressed until then, so loading never overwrites the
     /// stored values with the empty defaults.
@@ -2640,7 +2644,9 @@ public struct WeeklyBudgetCalculatorContent: View {
             error: incomeError,
             monthlyTotalCents: monthlyIncomeCents,
             onAdd: addIncomeItem,
-            onRemove: removeIncomeItem
+            onRemove: removeIncomeItem,
+            infoMessage: "The monthly income the weekly budget is worked out from. Add each person's income here, and remove one with its trash.",
+            showInfo: $showIncomeInfo
         )
     }
 
@@ -2884,12 +2890,32 @@ public struct WeeklyBudgetCalculatorContent: View {
         error: String?,
         monthlyTotalCents: Int,
         onAdd: @escaping () -> Void,
-        onRemove: @escaping (CalculatorItem) -> Void
+        onRemove: @escaping (CalculatorItem) -> Void,
+        infoMessage: String? = nil,
+        showInfo: Binding<Bool> = .constant(false)
     ) -> some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text(TitleCase.apply(to: title))
-                .font(.system(size: 17, weight: .bold))
-                .foregroundStyle(DesignTokens.ink)
+            HStack(spacing: 6) {
+                Text(TitleCase.apply(to: title))
+                    .font(.system(size: 17, weight: .bold))
+                    .foregroundStyle(DesignTokens.ink)
+                // Owner, Nov 26, 2026: the ⓘ beside the header —
+                // same treatment as Recurring Expenses' ⓘ. Only
+                // when the caller passes an info message.
+                if infoMessage != nil {
+                    Button {
+                        showInfo.wrappedValue = true
+                    } label: {
+                        Image(systemName: "info.circle")
+                            .font(.system(size: 17, weight: .semibold))
+                            .foregroundStyle(DesignTokens.primary)
+                            .padding(6)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("About \(title.lowercased())")
+                }
+            }
             if items.isEmpty {
                 FundsMuted("Nothing added yet.")
             } else {
@@ -2928,6 +2954,13 @@ public struct WeeklyBudgetCalculatorContent: View {
             .buttonStyle(PrimaryButtonStyle())
             .accessibilityLabel("Add income")
             calculatorTotalRow(value: MoneyFormat.formatCents(monthlyTotalCents))
+        }
+        .alert(TitleCase.apply(to: title), isPresented: showInfo) {
+            Button("OK") {}
+        } message: {
+            if let infoMessage {
+                Text(infoMessage)
+            }
         }
         .sheet(isPresented: $showIncomeSheet) {
             // The same add form as before — Name, $ amount,
@@ -3126,9 +3159,24 @@ public struct WeeklyBudgetCalculatorContent: View {
 
     private var lifestyleSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Lifestyle")
-                .font(.system(size: 17, weight: .bold))
-                .foregroundStyle(DesignTokens.ink)
+            HStack(spacing: 6) {
+                Text("Lifestyle")
+                    .font(.system(size: 17, weight: .bold))
+                    .foregroundStyle(DesignTokens.ink)
+                // Owner, Nov 26, 2026: the ⓘ beside the header —
+                // same treatment as Recurring Expenses' ⓘ.
+                Button {
+                    showLifestyleInfo = true
+                } label: {
+                    Image(systemName: "info.circle")
+                        .font(.system(size: 17, weight: .semibold))
+                        .foregroundStyle(DesignTokens.primary)
+                        .padding(6)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("About lifestyle")
+            }
             // Build 68 (item 12): ONE sliding bar for lifestyle +
             // custom holdback — Min. / Reg. / Max. / Custom — the
             // same squarish pattern as the debt rule. Min. is the
@@ -3166,6 +3214,11 @@ public struct WeeklyBudgetCalculatorContent: View {
             if customHoldbackInvalid {
                 FundsMuted("That holdback did not parse — using Regular 5% instead. Enter a percent between 0 and 100.")
             }
+        }
+        .alert("Lifestyle", isPresented: $showLifestyleInfo) {
+            Button("OK") {}
+        } message: {
+            Text("How much of your income is held back before working out the weekly budget. Min. holds back 10%, Regular 5%, Max. holds back nothing, and Custom is your own percent.")
         }
     }
 
