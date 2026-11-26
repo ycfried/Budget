@@ -177,10 +177,10 @@ public enum AuditFormatting {
     /// A no-op allowance row (stored Nov 11, 2026: $400 → $400)
     /// changed nothing — it never renders as a row at all (owner,
     /// Nov 14, 2026). The formatted detail for a no-op is the plain
-    /// value ("Base allowance: $400.00."); a real change reads
-    /// "From $X to $Y.", so only no-ops match this.
+    /// value ("$400.00"); a real change reads "$375.00 → $400.00",
+    /// so only no-ops lack the arrow.
     public static func isNoOpAllowanceChange(action: String, detail: String) -> Bool {
-        action == "Base allowance changed" && detail.hasPrefix("Base allowance: ")
+        action == "Base allowance changed" && !detail.contains(" → ")
     }
 
     // MARK: - householdActivityText (filterState.mjs:172-186)
@@ -226,25 +226,51 @@ public enum AuditFormatting {
         return amount == "$0.00" || amount == "-$0.00"
     }
 
-    /// Plain-language detail, display only — stored rows untouched.
-    /// One short line: the merchant/amount appears once, never twice.
+    /// Fact-first detail, display only — stored rows untouched.
+    /// One short structured line: the essential fact, never a
+    /// sentence. Merchants stay ALL CAPS as stored (owner, Nov 26,
+    /// 2026: the approved examples read `CLOUDFLARE HQ →
+    /// CLOUDFLARE`, `AMAZON $30.73`, `ROYAL FARMS $7.63` — the
+    /// same ALL-CAPS as the transaction rows; the Nov 14
+    /// normal-case rule does not apply to this line). Facts join
+    /// with " · ", renames and money moves use " → ", and no line
+    /// ends with a period. A detail that adds nothing the title
+    /// does not say returns "" and the row hides the line.
     public static func simplifyDetail(_ detail: String) -> String {
         var text = detail.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return text }
 
-        // Merged duplicate -> "<merchant $X> counted once." — a
-        // plain sentence, merchant in normal case (owner, Nov 14,
-        // 2026: "Counted once: TOIREMORG CHARITY $1.00" is jargon
-        // in ALL CAPS).
+        // Merged duplicate -> "AMAZON $30.73 · counted once".
         if let groups = firstMatch(
             text,
             pattern: "^Merged duplicate \\(([^)]+)\\) into (?:the original bank row|original) \\([^)]+\\)[^.]*\\.?"
         ), let merged = groups[1] {
-            return "\(normalCaseMerchant(merged.trimmingCharacters(in: .whitespaces))) counted once."
+            return "\(merged.trimmingCharacters(in: .whitespaces)) · counted once"
+        }
+        // Same-source duplicate excluded -> the same fact.
+        if let groups = firstMatch(
+            text,
+            pattern: "^Same-source duplicate (.+?) (-?\\$[\\d,]+\\.\\d{2}) \\(kind \\w+\\) shares .+?; excluded as a duplicate\\.?$"
+        ), let subject = groups[1], let amount = groups[2] {
+            return "\(subject.trimmingCharacters(in: .whitespaces)) \(amount) · counted once"
         }
         // Kept separate.
         if matches(text, pattern: "^Kept .*as separate purchases") {
-            return "Kept as two separate purchases."
+            return "Kept as two separate purchases"
+        }
+        // Merchant renamed -> "CLOUDFLARE HQ → CLOUDFLARE · 2 rows
+        // · applies to new rows".
+        if let groups = firstMatch(
+            text,
+            pattern: "^Renamed \"(.+?)\" to \"(.+?)\"(?: \\(kind \\w+\\))?(?: \\(matches \".+?\"\\))?(?: — (\\d+) row\\(s\\) updated(, rule applies to new rows too)?)?\\.?$"
+        ), let old = groups[1], let new = groups[2] {
+            let rows = groups[3] ?? ""
+            let hasRule = groups[4] != nil
+            if rows.isEmpty { return "\(old) → \(new)" }
+            let count = Int(rows) ?? 0
+            let rowWord = count == 1 ? "row" : "rows"
+            if hasRule { return "\(old) → \(new) · \(count) \(rowWord) · applies to new rows" }
+            return "\(old) → \(new) · \(count) \(rowWord)"
         }
         // Weeks-processed summary: the TITLE carries the week
         // count ("N weeks closed"), so the detail never restates
@@ -260,18 +286,30 @@ public enum AuditFormatting {
                 // "closed"; no other clause does.
                 .filter { !$0.hasPrefix("0") && !$0.hasPrefix("0 ") && !$0.contains("closed") }
             if parts.isEmpty { return "" }
-            return "\(parts.joined(separator: " · "))."
+            return parts.joined(separator: " · ")
         }
         // A bare "N weeks closed." on its own is the title restated.
         if matches(text, pattern: "^\\d+ weeks? closed\\.?$") { return "" }
-        // Surplus released.
+        // Surplus paid toward debt -> "$179.99 → Carried Debt ·
+        // Week of Nov 8, 2026" (owner, Nov 26, 2026). This is the
+        // Build 68 shortenActivityDetail rule, moved into the kit
+        // so the Activity view no longer needs its own copy.
+        if let groups = firstMatch(
+            text,
+            pattern: "^Surplus (\\$[\\d,]+\\.\\d{2}) for week (.+?) paid toward the carried debt.*$"
+        ), let amount = groups[1], let week = groups[2] {
+            return "\(amount) → Carried Debt · Week of \(week.trimmingCharacters(in: .whitespaces))"
+        }
+        // Surplus released -> "$120.00 → Extra Fund · Week of
+        // Nov 1, 2026".
         if let groups = firstMatch(
             text,
             pattern: "^Surplus (\\$[\\d,]+\\.\\d{2}) for week (.+?) released to the Extra Fund\\.?$"
         ), let amount = groups[1], let week = groups[2] {
-            return "\(amount) to the Extra Fund · Week of \(week.trimmingCharacters(in: .whitespaces))."
+            return "\(amount) → Extra Fund · Week of \(week.trimmingCharacters(in: .whitespaces))"
         }
-        // Refund restoration: plain parts, zero parts dropped.
+        // Refund restoration: amounts first, week last; zero parts
+        // dropped.
         if let groups = firstMatch(
             text,
             pattern: "^Refund .*for purchase week (.+?): surplus (\\$[\\d,]+\\.\\d{2}), debt reduction (\\$[\\d,]+\\.\\d{2}), fund (\\$[\\d,]+\\.\\d{2}), held (\\$[\\d,]+\\.\\d{2})\\.?$"
@@ -284,86 +322,126 @@ public enum AuditFormatting {
             ]
             let kept = plain.filter { !isZeroAmount($0.0) }
                 .map { "\($0.0!.trimmingCharacters(in: .whitespaces)) \($0.1)" }
+            let weekPart = "Week of \(week.trimmingCharacters(in: .whitespaces))"
             if kept.isEmpty {
-                return "Refund for the week of \(week.trimmingCharacters(in: .whitespaces))."
+                return "Refund · \(weekPart)"
             }
-            return "Refund for the week of \(week.trimmingCharacters(in: .whitespaces)): \(kept.joined(separator: " · "))."
+            return "\(kept.joined(separator: " · ")) · \(weekPart)"
         }
-        // Excluded / restored / reclassified / deleted / trash.
-        // Merchant subjects read in normal case, never ALL CAPS
-        // (owner, Nov 14, 2026).
+        // Excluded -> "AMAZON $62.99 · excluded · Order cancelled"
+        // (reason only when present).
         if let groups = firstMatch(
             text,
             pattern: "^(.+?) excluded(?: — reason: (.+?)| — no reason given)?\\.?$"
         ), let subject = groups[1] {
             let reason = (groups[2] ?? "")?.trimmingCharacters(in: .whitespaces) ?? ""
+            let base = "\(subject.trimmingCharacters(in: .whitespaces)) · excluded"
             if !reason.isEmpty && !reason.lowercased().contains("no reason given") {
-                return "Removed from the week: \(normalCaseMerchant(subject.trimmingCharacters(in: .whitespaces))) (\(reason))."
+                return "\(base) · \(reason)"
             }
-            return "Removed from the week: \(normalCaseMerchant(subject.trimmingCharacters(in: .whitespaces)))."
+            return base
         }
+        // Restored -> the subject only; the title says restored.
         if let groups = firstMatch(
             text,
             pattern: "^(.+?) restored to the week as (?:posted|pending)\\.?$"
         ), let subject = groups[1] {
-            return "Back in the week: \(normalCaseMerchant(subject.trimmingCharacters(in: .whitespaces)))."
+            return subject.trimmingCharacters(in: .whitespaces)
         }
+        // Restored by the one-off repair -> the subject only.
+        if let groups = firstMatch(
+            text,
+            pattern: "^Restored (.+?) (-?\\$[\\d,]+\\.\\d{2}) to verified.*$"
+        ), let subject = groups[1], let amount = groups[2] {
+            return "\(subject.trimmingCharacters(in: .whitespaces)) \(amount)"
+        }
+        // Reclassified -> "ERIE INSURANCE $1,986.00 · counts as a
+        // charge · Insurance" (reason only when present).
         if let groups = firstMatch(
             text,
             pattern: "^(.+?) reclassified from (\\w+) to (\\w+)(?: — reason: (.+?)| — no reason given)?\\.?$"
         ), let subject = groups[1], let toKind = groups[3] {
             let to = kindWords[toKind.lowercased()] ?? toKind
             let reason = (groups[4] ?? "")?.trimmingCharacters(in: .whitespaces) ?? ""
+            let base = "\(subject.trimmingCharacters(in: .whitespaces)) · counts as \(to)"
             if !reason.isEmpty && !reason.lowercased().contains("no reason given") {
-                return "Now counts as \(to): \(normalCaseMerchant(subject.trimmingCharacters(in: .whitespaces))) (\(reason))."
+                return "\(base) · \(reason)"
             }
-            return "Now counts as \(to): \(normalCaseMerchant(subject.trimmingCharacters(in: .whitespaces)))."
+            return base
         }
         if let groups = firstMatch(
             text,
             pattern: "^(.+?) \\(manual entry\\) deleted by admin\\.?$"
         ), let subject = groups[1] {
-            return "Deleted for good: \(normalCaseMerchant(subject.trimmingCharacters(in: .whitespaces)))."
+            return "\(subject.trimmingCharacters(in: .whitespaces)) · deleted for good"
         }
+        // Moved to trash -> the subject (+ reason when present);
+        // the title says trash.
         if let groups = firstMatch(
             text,
             pattern: "^(.+?) moved to trash(?: — reason: (.+?))?\\.?$"
         ), let subject = groups[1] {
-            return "Moved to the Trash: \(normalCaseMerchant(subject.trimmingCharacters(in: .whitespaces)))."
+            let reason = (groups[2] ?? "")?.trimmingCharacters(in: .whitespaces) ?? ""
+            let base = subject.trimmingCharacters(in: .whitespaces)
+            if !reason.isEmpty { return "\(base) · \(reason)" }
+            return base
         }
-        // Member removed: one short line naming who, and nothing
-        // else — the stored "They can no longer see the
-        // household." tail is wordy and it pushed the line past
-        // the right edge (owner, Nov 14, 2026).
+        // Member removed -> the name only; the title says removed.
+        // The stored "They can no longer see the household." tail
+        // is wordy and it pushed the line past the right edge
+        // (owner, Nov 14, 2026).
         if let groups = firstMatch(
             text,
             pattern: "^Removed (.+?) from the household\\..*$"
         ), let name = groups[1] {
-            return "Removed \(normalCaseMerchant(name.trimmingCharacters(in: .whitespaces))) from the household."
+            return name.trimmingCharacters(in: .whitespaces)
         }
-        // Marked as a charity gift: the detail names the
-        // transaction only — "Walmart $56.34." The title already
-        // says it was marked as a charity gift, so restating it
-        // here repeats the title (owner, Nov 14, 2026). No date:
-        // the actor/time line below already carries it.
+        // Member promoted -> "chayasf1 · admin".
         if let groups = firstMatch(
             text,
-            pattern: "^(.+?) (\\$[\\d,]+\\.\\d{2}) on (.+?) marked as a charity gift.*$"
-        ), let subject = groups[1], let amount = groups[2] {
-            return "\(normalCaseMerchant(subject.trimmingCharacters(in: .whitespaces))) \(amount)."
+            pattern: "^(.+?) was made an admin.*$"
+        ), let name = groups[1] {
+            return "\(name.trimmingCharacters(in: .whitespaces)) · admin"
         }
-        // Base allowance change: a no-op ("changed from $X to
-        // $X") never renders as a change — the entry is written
-        // server-side by set_base_allowance with no old==new guard
-        // (supabase/04-admin-rpcs.sql), so already-stored no-ops
-        // render as the plain value. A real change keeps only the
-        // values; the title already says it changed.
+        // Marked as a charity gift -> "WALMART $56.34". The title
+        // already says it was marked as a charity gift, so
+        // restating it here repeats the title (owner, Nov 14,
+        // 2026). No date: the actor/time line below already
+        // carries it.
+        if let groups = firstMatch(
+            text,
+            pattern: "^(.+?) (-?\\$[\\d,]+\\.\\d{2}) on (.+?) marked as a charity gift.*$"
+        ), let subject = groups[1], let amount = groups[2] {
+            return "\(subject.trimmingCharacters(in: .whitespaces)) \(amount)"
+        }
+        // Expense removed from recurring -> "ROYAL FARMS $7.63 ·
+        // counts as a purchase again" (owner, Nov 26, 2026).
+        if let groups = firstMatch(
+            text,
+            pattern: "^(.+?) (-?\\$[\\d,]+\\.\\d{2}) removed from recurring expenses.*$"
+        ), let subject = groups[1], let amount = groups[2] {
+            return "\(subject.trimmingCharacters(in: .whitespaces)) \(amount) · counts as a purchase again"
+        }
+        // Tagged as a recurring expense -> "ROYAL FARMS $7.63 ·
+        // recurring · monthly".
+        if let groups = firstMatch(
+            text,
+            pattern: "^(.+?) (-?\\$[\\d,]+\\.\\d{2}) tagged as a recurring expense \\((\\w+)\\).*$"
+        ), let subject = groups[1], let amount = groups[2], let freq = groups[3] {
+            return "\(subject.trimmingCharacters(in: .whitespaces)) \(amount) · recurring · \(freq)"
+        }
+        // Base allowance change -> "$375.00 → $400.00". A no-op
+        // ("changed from $X to $X") renders as the plain value —
+        // the entry is written server-side by set_base_allowance
+        // with no old==new guard (supabase/04-admin-rpcs.sql), so
+        // already-stored no-ops render as the plain value (see
+        // isNoOpAllowanceChange).
         if let groups = firstMatch(
             text,
             pattern: "^Base allowance changed from (\\$[\\d,]+\\.\\d{2}) to (\\$[\\d,]+\\.\\d{2})\\.?$"
         ), let from = groups[1], let to = groups[2] {
-            if from == to { return "Base allowance: \(from)." }
-            return "From \(from) to \(to)."
+            if from == to { return from }
+            return "\(from) → \(to)"
         }
         // Pure restatements of the title: the detail adds nothing,
         // so the row shows title + actor/time only (owner, Nov 12
@@ -383,35 +461,125 @@ public enum AuditFormatting {
             // ("20%."); strip it so the rate reads "20%", not
             // "20%." (owner, Nov 14, 2026 — plain language).
             let rate = (groups[1] ?? "").trimmingCharacters(in: CharacterSet(charactersIn: "."))
-            return "Charity rate: \(rate) for future income."
+            return "\(rate) · future income only"
         }
-        text = replace(text, pattern: "^Income (.+?) at ([^ ]+) commits (.+?) to charity\\.?$") { groups in
-            "Income \(groups[1] ?? "") — \(groups[3] ?? "") to charity."
+        // Income that commits to charity -> "YEHOSHUA FRIEDMAN
+        // $3,000.00 · $300.00 to charity" (date dropped — the
+        // actor/time line carries it).
+        text = replace(text, pattern: "^Income (.+?) (-?\\$[\\d,]+\\.\\d{2}) on (.+?) at ([^ ]+) commits (-?\\$[\\d,]+\\.\\d{2}) to charity\\.?$") { groups in
+            "\(groups[1] ?? "") \(groups[2] ?? "") · \(groups[5] ?? "") to charity"
         }
-        text = replace(text, pattern: "^Gift (.+?) on (.+?)\\.?$") { groups in
-            "Gift given: \(groups[1] ?? "") on \(groups[2] ?? "")."
+        // Income corrected (reversed and replaced) -> same fact.
+        text = replace(text, pattern: "^Income (.+?) (-?\\$[\\d,]+\\.\\d{2}) reversed and replaced by (.+?) (-?\\$[\\d,]+\\.\\d{2}) at ([^ ]+), committing (-?\\$[\\d,]+\\.\\d{2})\\.?$") { groups in
+            "\(groups[1] ?? "") \(groups[2] ?? "") · \(groups[6] ?? "") to charity"
         }
+        // Income excluded / reversed -> "YEHOSHUA FRIEDMAN
+        // $3,000.00 · $300.00 off charity owed".
+        text = replace(text, pattern: "^Income (.+?) (-?\\$[\\d,]+\\.\\d{2}) on (.+?) at ([^ ]+) was excluded; (-?\\$[\\d,]+\\.\\d{2}) deducted from charity owed\\.?$") { groups in
+            "\(groups[1] ?? "") \(groups[2] ?? "") · \(groups[5] ?? "") off charity owed"
+        }
+        // Gift -> "TEST ORG $5.00".
+        text = replace(text, pattern: "^Gift (.+?) (-?\\$[\\d,]+\\.\\d{2}) on (.+?)\\.?$") { groups in
+            "\(groups[1] ?? "") \(groups[2] ?? "")"
+        }
+        // Cash gift -> the amount only; the title says cash gift,
+        // and the Tzedaka card already shows the Available after.
+        text = replace(text, pattern: "^Cash gift (-?\\$[\\d,]+\\.\\d{2}) on (.+?) \\(Available .+? after\\)\\.?$") { groups in
+            groups[1] ?? ""
+        }
+        // Fund spending -> the amount only; the title says it was
+        // spent from the Extra Fund.
         text = replace(text, pattern: "^Fund spending (.+?)( \\(override: .+?\\))?\\.?$") { groups in
-            "Spent from the Extra Fund: \(groups[1] ?? "")."
+            groups[1] ?? ""
         }
         text = replace(text, pattern: "^Request.*approved for (.+?)( \\(split; remainder .+?\\))?( \\(override: .+?\\))?\\.?$") { groups in
             // Amount only — the title already says the request was
             // approved (owner, Nov 12 2026).
-            "\(groups[1] ?? "")."
+            groups[1] ?? ""
         }
-        text = replace(text, pattern: "^Request.*approved\\.?$") { _ in "Extra Fund request approved." }
-        text = replace(text, pattern: "^Request.*declined\\.?$") { _ in "Extra Fund request declined." }
         text = replace(text, pattern: "^Base allowance set to (.+?)\\.?$") { groups in
-            "Weekly allowance: \(groups[1] ?? "")."
+            groups[1] ?? ""
         }
+        // Weekly allowance set -> "$375.00 · Week of Nov 8, 2026".
         text = replace(text, pattern: "^Weekly allowance set to (.+?) for week (.+?)\\.?$") { groups in
-            "Weekly allowance: \(groups[1] ?? "") for the week of \(groups[2] ?? "")."
+            "\(groups[1] ?? "") · Week of \(groups[2] ?? "")"
         }
+        // Temporary increase -> "+$50.00 · Week of Nov 8, 2026".
         text = replace(text, pattern: "^Temporary increase (.+?) for week (.+?)\\.?$") { groups in
-            "Weekly allowance raised by \(groups[1] ?? "") for the week of \(groups[2] ?? "")."
+            "+\(groups[1] ?? "") · Week of \(groups[2] ?? "")"
         }
         text = replace(text, pattern: "^Fund shortfall changed from (.+?) to (.+?)\\.?$") { groups in
-            "Extra Fund shortfall: \(groups[2] ?? "")."
+            "Shortfall \(groups[2] ?? "")"
+        }
+        // Carried debt cleared -> "$1,127.96 cleared · $0.00
+        // remains".
+        text = replace(text, pattern: "^Cleared (-?\\$[\\d,]+\\.\\d{2}) of carried debt by hand(?: \\(partial clear of .+?; .+? owed before, (-?\\$[\\d,]+\\.\\d{2}) remain\\))?\\.?$") { groups in
+            let amount = groups[1] ?? ""
+            let remain = groups[2] ?? ""
+            if remain.isEmpty { return "\(amount) cleared" }
+            return "\(amount) cleared · \(remain) remains"
+        }
+        // Debt paid from the Extra Fund -> "$50.00 → Carried Debt
+        // · Extra Fund".
+        text = replace(text, pattern: "^Paid (-?\\$[\\d,]+\\.\\d{2}) toward the carried debt from the Extra Fund\\.?$") { groups in
+            "\(groups[1] ?? "") → Carried Debt · Extra Fund"
+        }
+        // Debt repayment rule -> "Off", or "25% of weekly
+        // allowance" for a bare percent (the rule is a share of
+        // the weekly allowance).
+        text = replace(text, pattern: "^Debt repayment rule set to ([^\\(]+?)(?: \\(applies .+?\\))?\\.?$") { groups in
+            let value = (groups[1] ?? "").trimmingCharacters(in: .whitespaces)
+            if value.lowercased() == "off" { return "Off" }
+            if value.range(of: "^\\d+%$", options: .regularExpression) != nil {
+                return "\(value) of weekly allowance"
+            }
+            return value.prefix(1).uppercased() + String(value.dropFirst())
+        }
+        // Extra Fund request created -> "$10.15 · Proof11 Bulk 015".
+        text = replace(text, pattern: "^Requested (-?\\$[\\d,]+\\.\\d{2}) for (.+?)\\.?$") { groups in
+            "\(groups[1] ?? "") · \(groups[2] ?? "")"
+        }
+        // Manual top-up -> "$740.00" when the whole top-up went to
+        // the fund; "$100.00 · $80.00 to fund" when part covered a
+        // shortfall (legacy split form).
+        text = replace(text, pattern: "^Manual top-up (-?\\$[\\d,]+\\.\\d{2}): (-?\\$[\\d,]+\\.\\d{2}) covered shortfall, (-?\\$[\\d,]+\\.\\d{2}) added to fund, (-?\\$[\\d,]+\\.\\d{2}) owed back after.*$") { groups in
+            let topup = groups[1] ?? ""
+            let shortfall = groups[2] ?? ""
+            let added = groups[3] ?? ""
+            let owedBack = groups[4] ?? ""
+            if !isZeroAmount(shortfall) || added != topup {
+                var fact = "\(topup) · \(added) to fund"
+                if !isZeroAmount(owedBack) { fact += " · \(owedBack) owed back" }
+                return fact
+            }
+            return topup
+        }
+        // Manual top-up saved as pending -> "$200.00 · pending".
+        text = replace(text, pattern: "^Manual top-up (-?\\$[\\d,]+\\.\\d{2}) saved as pending.*$") { groups in
+            "\(groups[1] ?? "") · pending"
+        }
+        // Fund hidden / shown -> the fund name only.
+        text = replace(text, pattern: "^Fund (.+?) hidden from Home\\.?$") { groups in
+            let name = (groups[1] ?? "").trimmingCharacters(in: .whitespaces)
+            return name.prefix(1).uppercased() + String(name.dropFirst())
+        }
+        text = replace(text, pattern: "^Fund (.+?) shown on Home again\\.?$") { groups in
+            let name = (groups[1] ?? "").trimmingCharacters(in: .whitespaces)
+            return name.prefix(1).uppercased() + String(name.dropFirst())
+        }
+        // Fund renamed -> "debt → Debt".
+        text = replace(text, pattern: "^Fund (.+?) renamed to \"(.+?)\"\\.?$") { groups in
+            "\(groups[1] ?? "") → \(groups[2] ?? "")"
+        }
+        // Gmail disconnected -> the email only.
+        text = replace(text, pattern: "^Disconnected (.+?) from email alerts\\.?$") { groups in
+            groups[1] ?? ""
+        }
+        // A manual add -> "TEA $5.00" (date dropped — the
+        // actor/time line carries it). Last: the income and gift
+        // patterns above have already claimed their forms.
+        text = replace(text, pattern: "^(.+?) (-?\\$[\\d,]+\\.\\d{2}) on (.+?)\\.?$") { groups in
+            "\(groups[1] ?? "") \(groups[2] ?? "")"
         }
         // A join or a household creation says nothing the title
         // does not say — the detail stays empty and the row shows
@@ -422,17 +590,28 @@ public enum AuditFormatting {
         // Nov 14, 2026.)
         text = replace(text, pattern: "^Created via create_household RPC.*$") { _ in "" }
         text = replace(text, pattern: "^Joined via invite code\\.?$") { _ in "" }
-        return collapseWhitespaceAndDots(text)
+        // Fallback: the shortest faithful version for a type with
+        // no fact pattern yet — the text as-is, minus a trailing
+        // period. (The Nov 26, 2026 redesign covers every action
+        // in the live log; this only fires for a future action
+        // whose stored wording has no pattern yet.)
+        var result = collapseWhitespaceAndDots(text)
+        if result.hasSuffix(".") { result.removeLast() }
+        return result
     }
 
     // MARK: - Activity titles, grouping
 
-    // No dot-colour key any more (owner, Nov 14, 2026): the dots
-    // were green/blue/grey with no meaning unless you already knew
-    // the code, so every row now carries the same muted dot — the
-    // type chips above the list do the categorising. `dotClass`
-    // was deleted with the colour rule; the view renders one
-    // neutral dot for all entries.
+    // Per-type icons replaced the dot (owner, Nov 26, 2026): each
+    // row carries a small SF Symbol for its type, coloured by
+    // meaning from the app palette (red removals, green positive
+    // money movements, blue neutral changes, grey housekeeping) —
+    // the colour lives in the icon only. The icon + colour mapping
+    // lives in the app (`ActivityView.activityIcon`), keyed on the
+    // translated action; the kit stays UI-free. The Nov 14, 2026
+    // rule it replaces (one muted dot for every row, no colour
+    // coding — the dots meant nothing without a legend) no longer
+    // applies: the icons ARE the legend now, one per type.
 
     // MARK: - Activity types (type filter, owner Nov 12 2026)
 

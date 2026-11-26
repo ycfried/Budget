@@ -147,7 +147,7 @@ final class SettingsFormattingTests: XCTestCase {
             AuditFormatting.simplifyDetail(
                 "Merged duplicate (TOIREMORG CHARITY $1.00) into the original bank row (TOIREMORG $1.00). Duplicate excluded, not deleted. Note: merge"
             ),
-            "Toiremorg Charity $1.00 counted once."
+            "TOIREMORG CHARITY $1.00 · counted once"
         )
     }
 
@@ -157,7 +157,7 @@ final class SettingsFormattingTests: XCTestCase {
         // (releases / restorations / held) stays.
         XCTAssertEqual(
             AuditFormatting.simplifyDetail("2 weeks closed, 1 surplus released, 0 refunds restored, 0 refunds held for review."),
-            "1 surplus released."
+            "1 surplus released"
         )
         XCTAssertEqual(
             AuditFormatting.simplifyDetail("1 week closed, 0 surpluses released, 0 refunds restored, 0 refunds held for review."),
@@ -173,21 +173,21 @@ final class SettingsFormattingTests: XCTestCase {
         // the values — the title already says it changed.
         XCTAssertEqual(
             AuditFormatting.formatDetail("Base allowance changed from 40000 cents to 40000 cents."),
-            "Base allowance: $400.00."
+            "$400.00"
         )
         XCTAssertEqual(
             AuditFormatting.formatDetail("Base allowance changed from 37500 cents to 40000 cents."),
-            "From $375.00 to $400.00."
+            "$375.00 → $400.00"
         )
         // And the row itself never renders at all: the view drops
         // no-op allowance entries (owner, Nov 14, 2026 — the
         // $400 → $400 row stored Nov 11 still showed as a change).
         XCTAssertTrue(AuditFormatting.isNoOpAllowanceChange(
-            action: "Base allowance changed", detail: "Base allowance: $400.00."))
+            action: "Base allowance changed", detail: "$400.00"))
         XCTAssertFalse(AuditFormatting.isNoOpAllowanceChange(
-            action: "Base allowance changed", detail: "From $375.00 to $400.00."))
+            action: "Base allowance changed", detail: "$375.00 → $400.00"))
         XCTAssertFalse(AuditFormatting.isNoOpAllowanceChange(
-            action: "Base allowance set", detail: "Base allowance: $400.00."))
+            action: "Base allowance set", detail: "$400.00"))
     }
 
     func testSimplifyCharityMarkIsOneShortLine() {
@@ -196,7 +196,7 @@ final class SettingsFormattingTests: XCTestCase {
         // 2026: no title repeating its subtitle).
         XCTAssertEqual(
             AuditFormatting.formatDetail("Walmart 5634 cents on 2026-11-10 marked as a charity gift (now outside weekly spending)."),
-            "Walmart $56.34."
+            "Walmart $56.34"
         )
     }
 
@@ -206,7 +206,7 @@ final class SettingsFormattingTests: XCTestCase {
         // the right edge (owner, Nov 14, 2026).
         XCTAssertEqual(
             AuditFormatting.simplifyDetail("Removed chayasf1 from the household. They can no longer see the household."),
-            "Removed Chayasf1 from the household."
+            "chayasf1"
         )
     }
 
@@ -218,7 +218,7 @@ final class SettingsFormattingTests: XCTestCase {
         XCTAssertEqual(AuditFormatting.simplifyDetail("Joined via invite code."), "")
         XCTAssertEqual(AuditFormatting.simplifyDetail("Household created."), "")
         XCTAssertEqual(AuditFormatting.simplifyDetail("Request approved."), "")
-        XCTAssertEqual(AuditFormatting.simplifyDetail("Request approved for $50.00."), "$50.00.")
+        XCTAssertEqual(AuditFormatting.simplifyDetail("Request approved for $50.00."), "$50.00")
     }
 
     func testActivityTypeClassification() {
@@ -240,18 +240,139 @@ final class SettingsFormattingTests: XCTestCase {
     func testSimplifySurplusReleased() {
         XCTAssertEqual(
             AuditFormatting.simplifyDetail("Surplus $120.00 for week Nov 1, 2026 released to the Extra Fund."),
-            "$120.00 to the Extra Fund · Week of Nov 1, 2026."
+            "$120.00 → Extra Fund · Week of Nov 1, 2026"
         )
     }
 
     func testSimplifyExcludedAndRestored() {
         XCTAssertEqual(
             AuditFormatting.simplifyDetail("TRADER JOES $12.00 excluded — reason: Duplicate."),
-            "Removed from the week: Trader Joes $12.00 (Duplicate)."
+            "TRADER JOES $12.00 · excluded · Duplicate"
         )
         XCTAssertEqual(
             AuditFormatting.simplifyDetail("TRADER JOES $12.00 restored to the week as posted."),
-            "Back in the week: Trader Joes $12.00."
+            "TRADER JOES $12.00"
+        )
+    }
+
+    func testSimplifyFactFirstLines() {
+        // Fact-first redesign (owner, Nov 26, 2026): one short
+        // structured line per entry, fact first, never a sentence,
+        // merchants ALL CAPS as stored, " · " separators, " → "
+        // for renames and money moves, no trailing period. Inputs
+        // are the stored `audit_log` details (cents, ISO dates,
+        // UUIDs) run through `formatDetail`, as the view does.
+        XCTAssertEqual(
+            AuditFormatting.formatDetail("Renamed \"CLOUDFLARE HQ\" to \"CLOUDFLARE\" (kind charge) (matches \"CLOUDFLARE\") — 2 row(s) updated, rule applies to new rows too."),
+            "CLOUDFLARE HQ → CLOUDFLARE · 2 rows · applies to new rows"
+        )
+        XCTAssertEqual(
+            AuditFormatting.formatDetail("Surplus 17999 cents for week 2026-11-08 paid toward the carried debt before the remainder became surplus."),
+            "$179.99 → Carried Debt · Week of Nov 8, 2026"
+        )
+        XCTAssertEqual(
+            AuditFormatting.formatDetail("ROYAL FARMS 763 cents removed from recurring expenses — the transaction counts as a purchase again."),
+            "ROYAL FARMS $7.63 · counts as a purchase again"
+        )
+        XCTAssertEqual(
+            AuditFormatting.formatDetail("ROYAL FARMS 763 cents tagged as a recurring expense (monthly) — no reason given."),
+            "ROYAL FARMS $7.63 · recurring · monthly"
+        )
+        XCTAssertEqual(
+            AuditFormatting.formatDetail("Same-source duplicate KEREN HATZEDAKA 200 cents (kind charity) shares dedupe_hash with a kept row; excluded as a duplicate."),
+            "KEREN HATZEDAKA $2.00 · counted once"
+        )
+        XCTAssertEqual(
+            AuditFormatting.formatDetail("Manual top-up 74000 cents: 0 cents covered shortfall, 74000 cents added to fund, 0 cents owed back after. Note: video-fixture savings top-up"),
+            "$740.00"
+        )
+        XCTAssertEqual(
+            AuditFormatting.formatDetail("Manual top-up 20000 cents saved as pending — not in checking yet. Note: From NYS"),
+            "$200.00 · pending"
+        )
+        XCTAssertEqual(
+            AuditFormatting.formatDetail("Paid 5000 cents toward the carried debt from the Extra Fund."),
+            "$50.00 → Carried Debt · Extra Fund"
+        )
+        XCTAssertEqual(
+            AuditFormatting.formatDetail("Cleared 112796 cents of carried debt by hand (partial clear of 112796 cents; 112796 cents owed before, 0 cents remain)."),
+            "$1,127.96 cleared · $0.00 remains"
+        )
+        XCTAssertEqual(
+            AuditFormatting.formatDetail("Requested $10.15 for Proof11 Bulk 015."),
+            "$10.15 · Proof11 Bulk 015"
+        )
+        XCTAssertEqual(
+            AuditFormatting.formatDetail("Fund debt hidden from Home."),
+            "Debt"
+        )
+        XCTAssertEqual(
+            AuditFormatting.formatDetail("Fund debt shown on Home again."),
+            "Debt"
+        )
+        XCTAssertEqual(
+            AuditFormatting.formatDetail("Fund debt renamed to \"Debt\"."),
+            "debt → Debt"
+        )
+        XCTAssertEqual(
+            AuditFormatting.formatDetail("Disconnected ycfried1@gmail.com from email alerts."),
+            "ycfried1@gmail.com"
+        )
+        XCTAssertEqual(
+            AuditFormatting.formatDetail("chayasf1 was made an admin (co-admin)."),
+            "chayasf1 · admin"
+        )
+        XCTAssertEqual(
+            AuditFormatting.formatDetail("Re-linked refund 11111111-2222-3333-4444-555555555555 (WALMART -2416 cents) from excluded charge 11111111-2222-3333-4444-555555555555 to live charge 11111111-2222-3333-4444-555555555555 so the refund restores the counted purchase. Note: re-link"),
+            "WALMART -$24.16 · re-linked to live charge"
+        )
+        XCTAssertEqual(
+            AuditFormatting.formatDetail("Restored MOBILE CHECK DEPOSIT -350000 cents to verified (posted) by owner-approved one-off repair; Plaid removed[] reversal had no snapshot."),
+            "MOBILE CHECK DEPOSIT -$3,500.00"
+        )
+        XCTAssertEqual(
+            AuditFormatting.formatDetail("Income YEHOSHUA FRIEDMAN 300000 cents on 2026-11-23 at 1000 basis points commits 30000 cents to charity."),
+            "YEHOSHUA FRIEDMAN $3,000.00 · $300.00 to charity"
+        )
+        XCTAssertEqual(
+            AuditFormatting.formatDetail("Income Mobile Check Deposit 700000 cents reversed and replaced by Mobile Check Deposit 700000 cents at 1000 basis points, committing 70000 cents."),
+            "Mobile Check Deposit $7,000.00 · $700.00 to charity"
+        )
+        XCTAssertEqual(
+            AuditFormatting.formatDetail("Income YEHOSHUA FRIEDMAN 300000 cents on 2026-11-23 at 1000 basis points was excluded; 30000 cents deducted from charity owed."),
+            "YEHOSHUA FRIEDMAN $3,000.00 · $300.00 off charity owed"
+        )
+        XCTAssertEqual(
+            AuditFormatting.formatDetail("Cash gift 6768 cents on 2026-11-16 (Available 59532 cents after)."),
+            "$67.68"
+        )
+        XCTAssertEqual(
+            AuditFormatting.formatDetail("Gift TEST ORG 500 cents on 2026-11-17."),
+            "TEST ORG $5.00"
+        )
+        XCTAssertEqual(
+            AuditFormatting.formatDetail("Weekly allowance set to 37500 cents for week 2026-11-08."),
+            "$375.00 · Week of Nov 8, 2026"
+        )
+        XCTAssertEqual(
+            AuditFormatting.formatDetail("Default charity rate set to 1000 basis points (applies to future incomes only)."),
+            "10% · future income only"
+        )
+        XCTAssertEqual(
+            AuditFormatting.formatDetail("Debt repayment rule set to off (applies to the current open week and future weeks; closed weeks keep their stored payment)."),
+            "Off"
+        )
+        XCTAssertEqual(
+            AuditFormatting.formatDetail("TEA $5.00 on Nov 25, 2026."),
+            "TEA $5.00"
+        )
+        XCTAssertEqual(
+            AuditFormatting.formatDetail("ERIE INSURANCE 198600 cents reclassified from transfer to charge — reason: Insurance."),
+            "ERIE INSURANCE $1,986.00 · counts as a charge · Insurance"
+        )
+        XCTAssertEqual(
+            AuditFormatting.formatDetail("CONG HANOE VHANETZACH $1.00 moved to trash — reason: Duplice."),
+            "CONG HANOE VHANETZACH $1.00 · Duplice"
         )
     }
 
