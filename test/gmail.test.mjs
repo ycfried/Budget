@@ -181,7 +181,7 @@ test('parse copies stay identical: gmail-poll vs _shared (N12)', () => {
     assert.ok(body.length > 100, `${name} extraction too short to trust`);
     return body;
   };
-  for (const name of ['parseAmexAlertText', 'extractPlainText', 'htmlToText']) {
+  for (const name of ['parseAmexAlertText', 'parseBankAlertText', 'identifyBankAlert', 'authResultsPassForBank', 'classifyBankAlert', 'bankAlertMatches', 'bankForDomain', 'buildAlertQuery', 'extractPlainText', 'htmlToText']) {
     assert.equal(extract(poll, name), extract(shared, name), `${name} drifted between parse copies`);
   }
 });
@@ -211,6 +211,6 @@ test('filterNewMessageIds: drops already-processed ids only', () => {
   assert.deepEqual(filterNewMessageIds([], ['a']), []);
 });
 
-test('buildAlertQuery: Amex Large Purchase alerts only, no label logic', () => {
-  assert.equal(buildAlertQuery(), 'from:(americanexpress.com) subject:"Large Purchase"');
+test('buildAlertQuery: Amex Large Purchase clause kept; nine banks added as sender clauses (Nov 26, 2026)', () => {
+  assert.equal(buildAlertQuery(), '{from:(americanexpress.com) subject:"Large Purchase"} {from:(alert.chase.com OR alertsp.chase.com OR chase.com OR bofa.com OR bankofamerica.com OR notify.wellsfargo.com OR alerts.wellsfargo.com OR wellsfargo.com OR citibank.com OR citi.com OR capitalone.com OR discover.com OR notifications.usbank.com OR alerts.usbank.com OR usbank.com OR pnc.com OR e.pnc.com OR td.com OR tdbank.com OR e.tdbank.com)}');
 });

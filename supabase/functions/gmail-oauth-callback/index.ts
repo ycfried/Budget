@@ -197,7 +197,7 @@ Deno.serve(async (req) => {
 
     return page(
       'Email connected',
-      `Connected <strong>${esc(emailAddress)}</strong> for read-only email alerts. The app will check it for Amex purchase alerts; purchases found there stay provisional until the bank confirms them. You can return to the app now.`,
+      `Connected <strong>${esc(emailAddress)}</strong> for read-only email alerts. The app will check it for bank purchase alerts; purchases found there stay provisional until the bank confirms them. You can return to the app now.`,
       redirectBase,
     );
   } catch (e) {

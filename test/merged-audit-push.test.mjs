@@ -126,7 +126,13 @@ test('A14: plaid-sync update never overwrites kind, never overwrites Trash state
   assert.doesNotMatch(plaidSync, /state, kind, external_id: txId/);
 });
 test('A15: plaid-sync hash match claims Gmail-alert rows only', () => {
-  assert.match(plaidSync, /\.eq\('source', 'amex_alert'\)/);
+  // Nov 26, 2026 (multi-bank parser): the hash match never contained
+  // a literal .eq('source', 'amex_alert') — it claims rows whose
+  // source is in EMAIL_SOURCES. That set was Amex-only until now; it
+  // now holds all ten email sources, so a Plaid row claims a
+  // Chase / Capital One / … alert row exactly like an Amex one.
+  // The pin is the set membership, not the old single source.
+  assert.match(plaidSync, /\.in\('source', \[\.\.\.EMAIL_SOURCES\]\)/);
 });
 
 // ---- A16: server guards as prepared SQL only ----
