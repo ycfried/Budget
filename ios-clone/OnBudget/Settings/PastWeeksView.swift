@@ -242,16 +242,31 @@ struct PastWeeksView: View {
 
                 SettingsCard(title: "Week History") {
                     if viewModel.isLoading && viewModel.weeks.isEmpty {
-                        // Build 64 (F-35): skeletons shaped like the
-                        // week blocks that follow — a heading + three
-                        // metric rows — not a spinning ring.
+                        // Nov 26, 2026 (loading audit): the skeleton
+                        // was four bare lines with a 24pt top pad —
+                        // no white card, only three metric rows — so
+                        // the first week block morphed shape (and
+                        // the card grew) when the weeks arrived.
+                        // It now mirrors one week block exactly:
+                        // the same white card + shadow + 12pt
+                        // padding, the heading + all four metric
+                        // rows, so the card holds its shape until
+                        // the list renders. The week count is
+                        // unknowable until the load, so one block
+                        // stands in for the list; later blocks grow
+                        // the card downward, below the fold.
                         VStack(alignment: .leading, spacing: 8) {
-                            SkeletonBlock(width: 140, height: 16, cornerRadius: 6)
-                            SkeletonBlock(width: 220, height: 14, cornerRadius: 6)
-                            SkeletonBlock(width: 200, height: 14, cornerRadius: 6)
-                            SkeletonBlock(width: 180, height: 14, cornerRadius: 6)
+                            SkeletonBlock(width: 200, height: 20, cornerRadius: 6)
+                            skeletonMetricRow(labelWidth: 80)
+                            skeletonMetricRow(labelWidth: 70)
+                            skeletonMetricRow(labelWidth: 120)
+                            skeletonMetricRow(labelWidth: 70)
                         }
-                        .padding(.top, 24)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(12)
+                        .background(Color.white)
+                        .cornerRadius(12)
+                        .fundCardShadow()
                     } else if let error = viewModel.loadError {
                         DismissableErrorBox(error) { viewModel.loadError = nil }
                     } else if viewModel.weeks.isEmpty {
@@ -279,6 +294,17 @@ struct PastWeeksView: View {
         // gesture attaches to nothing and the stack's own
         // enableSwipeBack owns the swipe.
         .sheetSwipeBack()
+    }
+
+    /// One skeleton metric row shaped like `metricRow` below: a
+    /// label block, the value block at the trailing end. The 18pt
+    /// height matches the subheadline line the real row renders.
+    private func skeletonMetricRow(labelWidth: CGFloat) -> some View {
+        HStack {
+            SkeletonBlock(width: labelWidth, height: 18, cornerRadius: 6)
+            Spacer()
+            SkeletonBlock(width: 70, height: 18, cornerRadius: 6)
+        }
     }
 
     private func weekBlock(_ week: PastWeekRow) -> some View {
