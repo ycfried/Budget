@@ -408,6 +408,19 @@ public struct TransactionIconView: View {
                         .interpolation(.high)
                         .scaledToFit()
                         .frame(width: fitted.width * 0.9, height: fitted.height * 0.9, alignment: .center)
+                        // Owner, Nov 27, 2026 (item 8 — the Amex
+                        // icon showed square corners with its text
+                        // cut off): the logo IMAGE itself is clipped
+                        // to the tile's rounded rectangle, not just
+                        // the tile — a tight-cropped square source
+                        // (Amex) filled the tile with its own sharp
+                        // corners showing. The radius scales with
+                        // the shorter side (never above the tile's
+                        // 10pt), so a short wide logo keeps its
+                        // artwork while a square one rounds exactly
+                        // like the tile. The monogram fallback is
+                        // untouched.
+                        .clipShape(RoundedRectangle(cornerRadius: min(10, min(fitted.width, fitted.height) * 0.9 * 0.25)))
                         .frame(width: size, height: size, alignment: .center)
                 } else {
                     // Loading or failed: the monogram stays

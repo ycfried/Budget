@@ -645,8 +645,9 @@ public struct TransactionActionsSheet: View {
 
     /// Build 64 (C-4): fitted detents, not a full-screen cover
     /// (reverses the Nov 17 full-screen rule, build 43 item 17).
-    /// The list is a half-screen sheet; the confirm flows are
-    /// small (sized to their content, build 74 — see
+    /// The list opens tall enough to show Group 1 + the whole
+    /// "More" row (owner, Nov 27, 2026 — item 7); the confirm
+    /// flows are small (sized to their content, build 74 — see
     /// `isConfirmFlow`); the taller flows (Rename, Link) get
     /// .medium. iPad: the 600pt frame (regular size class) keeps
     /// the sheet a centred card, never full-width or awkwardly
@@ -655,7 +656,17 @@ public struct TransactionActionsSheet: View {
     /// come from the detents, not from the content.
     private var sheetDetents: Set<PresentationDetent> {
         switch flow {
-        case .list, .rename, .linkCandidates:
+        case .list:
+            // Owner, Nov 27, 2026 (item 7): at .medium the "More"
+            // disclosure row sat below the fold, cut off mid-row
+            // with no sign more options exist. Group 1 (7 rows) +
+            // the More row + header is ~520pt: .fraction(0.8) is
+            // ~534pt on the smallest iPhone (SE) and ~675pt on
+            // iPhone 14, so the More row is fully visible on open
+            // without going full-screen .large — .large stays the
+            // second detent for the expanded More group.
+            return [.fraction(0.8), .large]
+        case .rename, .linkCandidates:
             return [.medium, .large]
         default:
             return [.fraction(0.45), .medium]

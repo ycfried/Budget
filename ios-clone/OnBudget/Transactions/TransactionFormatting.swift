@@ -462,13 +462,15 @@ public enum TransactionFormatting {
         }
     }
 
-    /// Card label (live.js:989, 1040): `••suffix`; charity cash gifts
-    /// show "Cash / no card", never `••0000`.
+    /// Card label (live.js:989, 1040): just the last 4 — owner,
+    /// Nov 27, 2026 (item 9): the "••" before the digits was ugly,
+    /// so it is gone ("Yesterday · 1005", never "••1005"). Charity
+    /// cash gifts show "Cash / no card", never "0000".
     public static func cardLabel(for transaction: Transaction) -> String {
         if transaction.kind == .charity, transaction.cardSuffix == "0000" {
             return "Cash / no card"
         }
-        return "••\(transaction.cardSuffix)"
+        return transaction.cardSuffix
     }
 
     /// One chip label for the From/To date range: "Nov 8 – Nov 14"
@@ -690,7 +692,7 @@ public struct TransactionFilters: Equatable {
         // reads by its export name ("Fund Charge", not the raw
         // enum), right after the status chip.
         if let kind { chips.append(("kind", TransactionExport.kindName(forKind: kind))) }
-        if card != "all" { chips.append(("card", "••\(card)")) }
+        if card != "all" { chips.append(("card", card)) }
         // ONE date chip at most, from the single "When" choice —
         // never a "From" chip and a "To" chip, never a week chip
         // beside a month chip.

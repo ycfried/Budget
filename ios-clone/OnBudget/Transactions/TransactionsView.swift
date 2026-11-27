@@ -213,6 +213,15 @@ public struct TransactionsView: View {
                 loadMoreButton
             }
             .padding()
+            // Owner, Nov 27, 2026 (item 1 — the bottom transaction
+            // was sliced by the page-select bar): bottom content
+            // inset equal to the bar's height, so the last row can
+            // sit fully above the bar and no row is cut off at the
+            // bar by default. The bar is ~70pt on iPhone / ~75pt
+            // on iPad (56-61pt pill + 12pt top + 2pt bottom,
+            // AppShellView pageSelectRow); with the 16pt padding
+            // above this is 76pt of clearance below the last row.
+            .padding(.bottom, 60)
         }
         // Build 74 (tour): scroll the current step's target into
         // view on step change.
@@ -327,21 +336,26 @@ public struct TransactionsView: View {
 
         func body(content: Content) -> some View {
             content
-                // Build 43 (owner, Nov 17, 2026 — item 17): full-screen
-                // cover, not a detent sheet — popups are always full size.
-                // The Filters content is a ScrollView in a NavigationStack,
-                // so it fills the full screen and starts at the top;
-                // Apply / Cancel at the bottom dismiss it. Width stays
-                // 600pt (regular) via the frame inside the sheet content.
-                .fullScreenCover(isPresented: $showingFilters) {
+                // Owner, Nov 27, 2026 (item 4): a fitted sheet, not
+                // a full-screen cover — the full-screen Filters left
+                // a huge empty middle (fields at the top, Apply /
+                // Reset pinned at the bottom). The sheet sizes to
+                // its content (`.presentationSizing(.fitted)` — the
+                // build-68 fitted-sheet pattern), so there is no
+                // dead space. The toolbar Back button + swipe
+                // dismiss still work in sheet form; Apply / Reset
+                // stay pinned at the bottom via safeAreaInset.
+                .sheet(isPresented: $showingFilters) {
                     TransactionsFilterSheet(viewModel: viewModel, fundNames: appState.fundNames, onDismiss: { showingFilters = false })
-                        // Build 64 (C-5, follow-up): the shell-root popup
-                        // sits UNDERNEATH a fullScreenCover, so a
-                        // confirmation fired while this cover is open
-                        // needs the overlay inside the cover's content.
-                        // The Filters sheet fires no toast of its own;
-                        // the binding is the app-shell toast state, so
-                        // any confirmation fired while it is open shows.
+                        .presentationSizing(.fitted)
+                        .presentationDragIndicator(.visible)
+                        // The shell-root popup sits UNDERNEATH a
+                        // sheet, so a confirmation fired while this
+                        // sheet is open needs the overlay inside
+                        // the sheet's content. The Filters sheet
+                        // fires no toast of its own; the binding is
+                        // the app-shell toast state, so any
+                        // confirmation fired while it is open shows.
                         .toastOverlay($appState.toast)
                 }
                 // Build 43 (owner, Nov 17, 2026 — item 17): full-screen
@@ -1177,6 +1191,11 @@ public struct TransactionsFilterSheet: View {
                     // follows the tint.
                     .tint(DesignTokens.ink)
                     .frame(maxWidth: .infinity, minHeight: 48, alignment: .leading)
+                    // Owner, Nov 27, 2026 (item 3): the whole row
+                    // opens the menu, not just the label text — a
+                    // menu Picker's hit area is only its label, so
+                    // tapping the empty right side did nothing.
+                    .contentShape(Rectangle())
                     .padding(.horizontal, 14)
                     .background(.white)
                     .overlay(
@@ -1215,12 +1234,16 @@ public struct TransactionsFilterSheet: View {
                     Picker("Card", selection: $draftCard) {
                         Text("All cards").tag("all")
                         ForEach(viewModel.cardsPresent, id: \.self) { card in
-                            Text("••\(card)").tag(card)
+                            Text(card).tag(card)
                         }
                     }
                     .pickerStyle(.menu)
                     .tint(DesignTokens.ink)
                     .frame(maxWidth: .infinity, minHeight: 48, alignment: .leading)
+                    // Owner, Nov 27, 2026 (item 3): the whole row
+                    // opens the menu, not just the label text (see
+                    // the Status picker above).
+                    .contentShape(Rectangle())
                     .padding(.horizontal, 14)
                     .background(.white)
                     .overlay(
@@ -1411,6 +1434,9 @@ public struct TransactionsFilterSheet: View {
         .pickerStyle(.menu)
         .tint(DesignTokens.ink)
         .frame(maxWidth: .infinity, minHeight: 48, alignment: .leading)
+        // Owner, Nov 27, 2026 (item 3): the whole row opens the
+        // menu, not just the label text (see the Status picker).
+        .contentShape(Rectangle())
         .padding(.horizontal, 14)
         .background(.white)
         .overlay(

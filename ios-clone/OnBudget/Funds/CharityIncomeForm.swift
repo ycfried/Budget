@@ -542,7 +542,13 @@ public struct TzedakaActionSheet: View {
             // The confirm reads as the ACTION, not the mode:
             // "Add to Tzedaka" in Add mode (the mode is
             // "Add Money"), "Record Donation" in Record mode.
-            FundsPrimaryButton(mode == .add ? "Add to \(fundName)" : "Record Donation", isBusy: viewModel.busyAction == "add-charity" || viewModel.busyAction == "record-cash-gift") {
+            // Owner, Nov 27, 2026 (item 5b): NEVER busy — the
+            // submit is optimistic (see save()), so the sheet is
+            // already dismissing on tap and the button must not
+            // grey out while the RPC runs. The view model's
+            // guarded() double-tap guard still prevents a
+            // double-submit.
+            FundsPrimaryButton(mode == .add ? "Add to \(fundName)" : "Record Donation", isBusy: false) {
                 save()
             }
         }
@@ -565,15 +571,48 @@ public struct TzedakaActionSheet: View {
             actionError = "Enter an amount above $0.00."
             return
         }
+        // Owner, Nov 27, 2026 (item 5a): the Note is mandatory in
+        // BOTH modes, like everywhere else — a blank note stops the
+        // save with an inline error, the same pattern as the amount
+        // validation above. The button is NOT disabled while the
+        // note is empty (standing rule: no greyed-out buttons, only
+        // buttons that work) — the error is the enforcement. The
+        // sheet stays open and the typed input stays.
+        if noteText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            actionError = "Add a note."
+            return
+        }
         if mode == .record, let availableCents, cents > availableCents {
             actionError = "That is more than the \(MoneyFormat.formatCents(availableCents)) available to give."
             return
         }
         actionError = nil
+        // Owner, Nov 27, 2026 (item 5b/c — optimistic submit, the
+        // build-111 reclassify pattern): the sheet dismisses and
+        // the toast fires IMMEDIATELY on tap, and the RPC runs in
+        // the background. The old await-then-close left the confirm
+        // greyed out while the RPC ran and the toast lagging behind
+        // the still-open sheet, so it showed on the Funds page
+        // behind the sheet. The view model's `silent` path
+        // suppresses its own later toast (no duplicate) and turns a
+        // failure into an error toast (never silently swallowed);
+        // the sheet is already closed, so the error toast is the
+        // signal. The typed input is cleared on tap — the sheet is
+        // gone either way.
+        let amount = cents
+        let note = noteText
+        let leftAfterGift = availableCents.map { $0 - amount }
+        amountText = ""
+        noteText = ""
+        onClose()
+        if mode == .add {
+            viewModel.toast = Toast(message: "Added \(MoneyFormat.formatCents(amount)) to \(fundName).", kind: .success)
+        } else if let leftAfterGift {
+            viewModel.toast = Toast(message: "Recorded a \(MoneyFormat.formatCents(amount)) donation. \(MoneyFormat.formatCents(leftAfterGift)) left to give.", kind: .success)
+        } else {
+            viewModel.toast = Toast(message: "Recorded a \(MoneyFormat.formatCents(amount)) donation.", kind: .success)
+        }
         Task {
-            // Clear only on success — on failure the typed input
-            // stays beside the error (F-P1-4).
-            let ok: Bool
             if mode == .add {
                 // Build 78 (owner, Nov 25, 2026): the note typed
                 // in Add Money mode is passed through to the RPC
@@ -581,14 +620,9 @@ public struct TzedakaActionSheet: View {
                 // being dropped — the Record path already did
                 // this. The over-available check above stays
                 // Record-only.
-                ok = await viewModel.addToCharity(amountCents: cents, note: noteText)
+                _ = await viewModel.addToCharity(amountCents: amount, note: note, silent: true)
             } else {
-                ok = await viewModel.recordCharityCashGift(amountCents: cents, note: noteText)
-            }
-            if ok {
-                amountText = ""
-                noteText = ""
-                onClose()
+                _ = await viewModel.recordCharityCashGift(amountCents: amount, note: note, silent: true)
             }
         }
     }

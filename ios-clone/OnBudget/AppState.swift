@@ -277,20 +277,24 @@ public final class AppViewModel: ObservableObject {
     /// entry to Home (build 54, owner Nov 21, 2026): a per-device
     /// preference (UserDefaults, not household data — each member
     /// picks on their own device), same pattern as `homeLayout`.
-    /// Default ON (owner Nov 26, 2026 — reversing build 73, owner
-    /// Nov 24, 2026 — "the tutorial needs to be shut off"): a
-    /// fresh install auto-shows the tour. A stored `false` (the
-    /// user turned the toggle OFF in Settings) is still respected
-    /// and the tour never auto-shows on that device. When OFF,
-    /// `maybeStartTour` never auto-starts the tour; the "Replay
-    /// Tutorial" row in Settings still starts it on demand. The
-    /// Settings screen offers the toggle, inside the tour card.
+    /// Default OFF (owner Nov 27, 2026 — the tour's highlights
+    /// are inaccurate and he is dropping it for now; a separate
+    /// accurate rebuild is in progress and will ship only after
+    /// he approves its video): a fresh install never auto-shows
+    /// the tour. Build 107 had flipped it ON (owner Nov 26,
+    /// 2026 — reversing build 73, owner Nov 24, 2026 — "the
+    /// tutorial needs to be shut off"); this flips it back. A
+    /// stored `true` (the user turned the toggle ON in Settings)
+    /// is still respected. When OFF, `maybeStartTour` never
+    /// auto-starts the tour; the "Replay Tutorial" row in
+    /// Settings still starts it on demand. The Settings screen
+    /// offers the toggle, inside the tour card.
     @Published public var tourAutoShow: Bool = {
         // UserDefaults bool(forKey:) returns false for a missing
-        // key, so read the stored object and default to true
-        // when absent — a fresh install auto-shows the tour; an
-        // explicit stored false still turns it off.
-        UserDefaults.standard.object(forKey: "hb-tour-auto-show") as? Bool ?? true
+        // key, so read the stored object and default to false
+        // when absent — a fresh install never auto-shows the tour;
+        // an explicit stored true still turns it on.
+        UserDefaults.standard.object(forKey: "hb-tour-auto-show") as? Bool ?? false
     }() {
         didSet {
             UserDefaults.standard.set(tourAutoShow, forKey: "hb-tour-auto-show")

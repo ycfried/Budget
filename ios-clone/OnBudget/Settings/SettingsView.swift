@@ -92,6 +92,32 @@ enum SettingsSubpage: Hashable, CaseIterable {
         case .app: "app"
         }
     }
+
+    /// Owner, Nov 27, 2026 (item 6b — the hub "needs more color
+    /// and life"): one small coloured icon per row, the Activity
+    /// page's pattern (the icon alone carries the colour; titles
+    /// stay ink). App palette only — Profile primary blue,
+    /// Household deep blue, Connections charity green,
+    /// Notifications fund amber, App mid blue.
+    var hubIconName: String {
+        switch self {
+        case .profile: "person"
+        case .household: "person.2"
+        case .connections: "link"
+        case .notifications: "bell"
+        case .app: "info.circle"
+        }
+    }
+
+    var hubIconColor: Color {
+        switch self {
+        case .profile: DesignTokens.primary
+        case .household: DesignTokens.deep
+        case .connections: DesignTokens.charity
+        case .notifications: DesignTokens.fund
+        case .app: DesignTokens.mid
+        }
+    }
 }
 
 struct SettingsView: View {
@@ -155,7 +181,11 @@ struct SettingsView: View {
                 // the header's 20pt bottom pad is already the gap
                 // below the title (a full .padding() would double
                 // it to 36pt).
-                SettingsCard {
+                // Owner, Nov 27, 2026 (item 6a): the card's vertical
+                // padding is 0 here — the rows carry their own 12pt,
+                // so the top and bottom rows are the same height as
+                // the middle ones instead of 16pt taller.
+                SettingsCard(verticalPadding: 0) {
                     VStack(spacing: 0) {
                         ForEach(Array(SettingsSubpage.allCases.enumerated()), id: \.element) { index, page in
                             SettingsHubRow(page: page)
@@ -224,6 +254,14 @@ private struct SettingsHubRow: View {
     var body: some View {
         NavigationLink(value: page) {
             HStack(spacing: 12) {
+                // Owner, Nov 27, 2026 (item 6b): a small coloured
+                // icon — 15pt semibold in a 24pt frame, the
+                // Activity page's pattern — so the hub reads with
+                // colour, not just black text on white.
+                Image(systemName: page.hubIconName)
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(page.hubIconColor)
+                    .frame(width: 24, height: 24)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(page.title)
                         .font(.system(size: 17, weight: .semibold))

@@ -780,14 +780,23 @@ public final class FundsViewModel: ObservableObject {
 
     /// Runs an action with the double-tap guard: the submit button is
     /// disabled before any awaited network call (spec §2.3).
-    private func guarded(_ key: String, title: String = "Could Not Complete", work: () async throws -> Void) async {
+    /// `silent` (owner, Nov 27, 2026 — item 5, optimistic Tzedaka
+    /// submit): the caller already showed the success toast and
+    /// dismissed, so a failure must NOT raise the alert — it sets an
+    /// error toast instead — and a success must NOT fire a second
+    /// `succeed()` toast. The double-tap guard still applies.
+    private func guarded(_ key: String, title: String = "Could Not Complete", silent: Bool = false, work: () async throws -> Void) async {
         guard busyAction == nil else { return }
         busyAction = key
         defer { busyAction = nil }
         do {
             try await work()
         } catch {
-            fail(title: title, error: error)
+            if silent {
+                toast = Toast(message: userMessage(for: error), kind: .error)
+            } else {
+                fail(title: title, error: error)
+            }
         }
     }
 
@@ -1331,9 +1340,9 @@ public final class FundsViewModel: ObservableObject {
     /// Add Money mode of the Tzedaka action sheet is passed
     /// through to the RPC's pNote (was hardcoded "") so it is
     /// actually saved, like the Record path already did.
-    public func addToCharity(amountCents: Int, note: String = "") async -> Bool {
+    public func addToCharity(amountCents: Int, note: String = "", silent: Bool = false) async -> Bool {
         var succeeded = false
-        await guarded("add-charity", title: "Could Not Add to \(charityName)") {
+        await guarded("add-charity", title: "Could Not Add to \(charityName)", silent: silent) {
             let result = try await context.client.rpcs.recordCharityIncome(
                 pHouseholdId: context.householdId,
                 pAmountCents: amountCents,
@@ -1342,7 +1351,9 @@ public final class FundsViewModel: ObservableObject {
                 pRateBp: 10000,
                 pNote: note
             )
-            succeed("Added \(MoneyFormat.formatCents(result.committedCents)) to \(charityName).")
+            if !silent {
+                succeed("Added \(MoneyFormat.formatCents(result.committedCents)) to \(charityName).")
+            }
             succeeded = true
             await refresh()
         }
@@ -1360,9 +1371,9 @@ public final class FundsViewModel: ObservableObject {
     /// exceeds the Available balance, so the gift can never take
     /// Available below $0. Returns true only when the save committed,
     /// so the caller clears the typed input on success only (F-P1-4).
-    public func recordCharityCashGift(amountCents: Int, note: String) async -> Bool {
+    public func recordCharityCashGift(amountCents: Int, note: String, silent: Bool = false) async -> Bool {
         var succeeded = false
-        await guarded("record-cash-gift", title: "Could Not Record Donation") {
+        await guarded("record-cash-gift", title: "Could Not Record Donation", silent: silent) {
             let result = try await context.client.rpcs.recordCharityCashGift(
                 pHouseholdId: context.householdId,
                 pAmountCents: amountCents,
@@ -1378,7 +1389,9 @@ public final class FundsViewModel: ObservableObject {
             // client summary instead, falling back to the RPC
             // figure when the summary failed to load.
             let leftCents = charitySummary?.remainingCents ?? result.remainingCents
-            succeed("Recorded a \(MoneyFormat.formatCents(amountCents)) donation. \(MoneyFormat.formatCents(leftCents)) left to give.")
+            if !silent {
+                succeed("Recorded a \(MoneyFormat.formatCents(amountCents)) donation. \(MoneyFormat.formatCents(leftCents)) left to give.")
+            }
             succeeded = true
         }
         return succeeded

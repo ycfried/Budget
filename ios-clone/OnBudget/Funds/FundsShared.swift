@@ -1066,8 +1066,9 @@ public struct FundsExpandableCard<Expanded: View>: View {
     public let iconName: String?
     /// Reorder mode (build 41 — owner, Nov 16, 2026): when true
     /// the card shows the header strip + the amount, and a
-    /// three-line drag grip sits beside the chevron — the card
-    /// moves by drag. Owner, Nov 26, 2026: a tap still expands
+    /// three-line drag grip sits centred on the card's trailing
+    /// edge (owner, Nov 27, 2026 — it used to sit beside the
+    /// chevron, small and grey) — the card moves by drag. Owner, Nov 26, 2026: a tap still expands
     /// the card in reorder mode (the expanded detail shows), so
     /// the card is tappable from anywhere there too; only the
     /// pencil and info icon hide (the card does not rename or
@@ -1257,6 +1258,26 @@ public struct FundsExpandableCard<Expanded: View>: View {
         // lift exactly like the Home cards.
         .fundCardShadow()
         .contentShape(Rectangle())
+        // Owner, Nov 27, 2026 (item 10b — the grip was small, grey
+        // and hard to grab, tucked up in the header): in reorder
+        // mode the grip sits vertically centred on the card's
+        // trailing edge, where the thumb lands naturally — 20pt in
+        // primary blue, in a 44pt grab area. The grip is the drag
+        // affordance only; the drag itself is the card's .onDrag
+        // (FundsView). The chevron stays in the header for
+        // expand/collapse. The grip is an Image, not a Button, so
+        // it never eats taps meant for the card or its detail.
+        .overlay(alignment: .trailing) {
+            if isReorderMode {
+                Image(systemName: "line.3.horizontal")
+                    .font(.system(size: 20, weight: .bold))
+                    .foregroundStyle(DesignTokens.primary)
+                    .frame(width: 44, height: 44)
+                    .contentShape(Rectangle())
+                    .padding(.trailing, 8)
+                    .accessibilityLabel("Drag to reorder \(TitleCase.apply(to: title))")
+            }
+        }
         // Whole-card tap target (owner, Nov 26, 2026 —
         // "tappable from anywhere on the card"): the tap used to
         // live on the header strip and the amount body
@@ -1404,17 +1425,12 @@ public struct FundsExpandableCard<Expanded: View>: View {
                 .font(.system(size: 15, weight: .bold))
                 .foregroundStyle(hintColor)
                 .rotationEffect(.degrees(isExpanded ? 180 : 0))
-            // Drag grip (owner, Nov 25, 2026): reorder mode only —
-            // the standard three-line grip in the chevron's place,
-            // so it is obvious the card can be dragged. The grip is
-            // the drag affordance only; the drag itself is the
-            // existing .onDrag on the card container.
-            if isReorderMode {
-                Image(systemName: "line.3.horizontal")
-                    .font(.system(size: 15, weight: .bold))
-                    .foregroundStyle(hintColor)
-                    .accessibilityLabel("Drag to reorder \(TitleCase.apply(to: title))")
-            }
+            // Owner, Nov 27, 2026 (item 10b): the drag grip is NO
+            // longer here — it was small, grey and hard to grab,
+            // tucked up in the header. It now sits vertically
+            // centred on the card (see the overlay in `body`
+            // below), bigger and in primary blue. The chevron stays
+            // here for expand/collapse.
         }
         .padding(.horizontal, pad)
         .padding(.vertical, 14)

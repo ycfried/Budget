@@ -313,6 +313,15 @@ public struct FundsView: View {
                 }
             }
             .padding()
+            // Owner, Nov 27, 2026 (item 1 — same as Transactions):
+            // bottom content inset equal to the page-select bar's
+            // height, so the last card can sit fully above the bar
+            // and no card is cut off at the bar by default. The bar
+            // is ~70pt on iPhone / ~75pt on iPad (56-61pt pill +
+            // 12pt top + 2pt bottom, AppShellView pageSelectRow);
+            // with the 16pt padding above this is 76pt of clearance
+            // below the last card.
+            .padding(.bottom, 60)
         }
         // Build 74 (tour): scroll the current step's target into
         // view on step change — the rate editor and the fund
@@ -1258,7 +1267,7 @@ public struct FundsView: View {
         // Owner, Nov 25, 2026: reorder is drag-only now — the
         // up/down arrows (build 34 fallback) are gone, and so are
         // moveFund / reorderArrows / reorderArrowButton (they had
-        // no other caller). The drag grip in the card header
+        // no other caller). The drag grip centred on the card
         // (FundsExpandableCard) is the only reorder affordance.
         // The drag itself (.onDrag/.onDrop below) is unchanged.
         VStack(alignment: .leading, spacing: 12) {
@@ -1299,9 +1308,9 @@ public struct FundsView: View {
         // expands the card in reorder mode too
         // (FundsExpandableCard); only a press-and-hold drag
         // reorders it, so nothing here needs to guard the tap.
-        // The card being dragged fades a little so the user can see
-        // which one is in their hand.
-        .opacity(isRearranging && draggingId == id ? 0.55 : 1)
+        // Owner, Nov 27, 2026 (item 10a): NO fade while dragging —
+        // the 0.55 opacity greyed the card out mid-drag and threw
+        // him off. A dragged card stays at full opacity.
         // Drag to move (owner, Nov 16, 2026 — build 41): only in
         // reorder mode, so a normal scroll never starts a drag. The
         // drop delegate moves the fund live as it is dragged over
@@ -1311,12 +1320,40 @@ public struct FundsView: View {
                 .onDrag {
                     draggingId = id
                     return NSItemProvider(object: id.rawValue as NSString)
+                } preview: {
+                    // Owner, Nov 27, 2026 (item 10a): the dragged
+                    // card keeps its EXACT at-rest shape — the
+                    // default drag preview dropped the rounded
+                    // corners and the card rendered SQUARE while
+                    // being moved. The explicit preview is the same
+                    // card with the same rounded clip (cornerRadius
+                    // 12, FundsExpandableCard), so it never squares
+                    // off mid-drag.
+                    fundCardView(for: id)
+                        .clipShape(RoundedRectangle(cornerRadius: 12))
                 }
                 .onDrop(of: [.text], delegate: FundReorderDropDelegate(
                     draggingId: $draggingId,
                     fundOrder: $fundOrder,
                     targetId: id
                 ))
+        }
+    }
+
+    /// The one fund card for `id`, without the tour anchors — so
+    /// the drag preview above can render the exact same card (the
+    /// anchors stay on the in-list card in `fundContainer`).
+    @ViewBuilder
+    private func fundCardView(for id: FundSectionID) -> some View {
+        switch id {
+        case .spending:
+            spendingCard
+        case .fund:
+            fundCard
+        case .charity:
+            charityCard
+        case .debt:
+            debtCard
         }
     }
 

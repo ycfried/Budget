@@ -232,10 +232,20 @@ struct SettingsCard<Content: View>: View {
     /// link row below it, so the title is dropped there and the
     /// link row is the one entry. Every other card passes its title.
     let title: String?
+    /// Owner, Nov 27, 2026 (item 6a — the Settings hub's top and
+    /// bottom rows were taller than the middle ones): the card's
+    /// own 16pt vertical padding stacked on the rows' 12pt, so the
+    /// first/last rows got 28pt at the card edge and the middle rows
+    /// 12pt. A caller whose rows carry their own vertical padding
+    /// passes 0, so the rows' padding alone sets the spacing and
+    /// every row is the same height. Default 16 — every other
+    /// caller is unchanged.
+    let verticalPadding: CGFloat
     @ViewBuilder let content: Content
 
-    init(title: String? = nil, @ViewBuilder content: () -> Content) {
+    init(title: String? = nil, verticalPadding: CGFloat = 16, @ViewBuilder content: () -> Content) {
         self.title = title
+        self.verticalPadding = verticalPadding
         self.content = content()
     }
 
@@ -249,7 +259,8 @@ struct SettingsCard<Content: View>: View {
             }
             content
         }
-        .padding(16)
+        .padding(.horizontal, 16)
+        .padding(.vertical, verticalPadding)
         .background(.white)
         .cornerRadius(20)
         .overlay(
