@@ -392,11 +392,14 @@ struct WidgetView: View {
     /// black weight) no longer match the app.
     private func wordmark(logoSize: CGFloat = 24, font: Font = .system(size: 19, weight: .medium)) -> some View {
         HStack(spacing: 6) {
+            // Owner, Nov 26, 2026 (new 5-bar icon): the logo is a
+            // rounded SQUARE now, not a circle — no circle clip,
+            // so the outer bars are not cropped (same reason as
+            // the splash; the AppLogo asset is shared).
             Image("AppLogo")
                 .resizable()
                 .scaledToFit()
                 .frame(width: logoSize, height: logoSize)
-                .clipShape(Circle())
             if isPlaceholder {
                 skeletonBar(width: 88, height: 16)
             } else {

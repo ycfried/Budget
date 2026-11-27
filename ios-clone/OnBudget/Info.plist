@@ -41,6 +41,12 @@
 	<false/>
 	<key>NSFaceIDUsageDescription</key>
 	<string>Unlock STAGE with Face ID instead of typing your password.</string>
+	<key>UIAppFonts</key>
+	<array>
+		<string>Montserrat-Bold.ttf</string>
+		<string>Poppins-Regular.ttf</string>
+		<string>Poppins-SemiBold.ttf</string>
+	</array>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

@@ -74,6 +74,9 @@
 		W20404040404040404040404 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A3A3A3A3A3A3A3A3A3A3A3A3 /* Assets.xcassets */; };
 		W20202020202020202020202 /* OnBudgetKit in Frameworks */ = {isa = PBXBuildFile; productRef = W50101010101010101010101 /* OnBudgetKit */; };
 		W20303030303030303030303 /* OnBudgetWidget.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = W10202020202020202020202 /* OnBudgetWidget.appex */; };
+		15D194402C06FE9750872818 /* Montserrat-Bold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 85AE5A4CF4C988EE6584970F /* Montserrat-Bold.ttf */; };
+		63D10EF129C3F934CB1481EE /* Poppins-Regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 56E4BF69DA76ED81939A8A96 /* Poppins-Regular.ttf */; };
+		D3098EED279807C578FE40AD /* Poppins-SemiBold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 65970B371092901A64F6BC70 /* Poppins-SemiBold.ttf */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -184,6 +187,9 @@
 		W10303030303030303030303 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		W10404040404040404040404 /* OnBudgetWidget.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = OnBudgetWidget.entitlements; sourceTree = "<group>"; };
 		W10505050505050505050505 /* OnBudget.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = OnBudget.entitlements; sourceTree = "<group>"; };
+		85AE5A4CF4C988EE6584970F /* Montserrat-Bold.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = Montserrat-Bold.ttf; sourceTree = "<group>"; };
+		56E4BF69DA76ED81939A8A96 /* Poppins-Regular.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = Poppins-Regular.ttf; sourceTree = "<group>"; };
+		65970B371092901A64F6BC70 /* Poppins-SemiBold.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = Poppins-SemiBold.ttf; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -245,6 +251,7 @@
 				A2A2A2A2A2A2A2A2A2A2A2A2 /* ContentView.swift */,
 				C100C100C100C100C100C100 /* Settings */,
 				A3A3A3A3A3A3A3A3A3A3A3A3 /* Assets.xcassets */,
+				4E707BD0F3DBC73115D6570A /* Fonts */,
 				12291D00947248EEBEDE8CE3 /* Formatting.swift */,
 				87AEFF5E2EA017AE3244A8F5 /* SharedViews.swift */,
 				9797F433BFE450273219710C /* AppState.swift */,
@@ -367,6 +374,16 @@
 				W10404040404040404040404 /* OnBudgetWidget.entitlements */,
 			);
 			path = OnBudgetWidget;
+			sourceTree = "<group>";
+		};
+		4E707BD0F3DBC73115D6570A /* Fonts */ = {
+			isa = PBXGroup;
+			children = (
+				85AE5A4CF4C988EE6584970F /* Montserrat-Bold.ttf */,
+				56E4BF69DA76ED81939A8A96 /* Poppins-Regular.ttf */,
+				65970B371092901A64F6BC70 /* Poppins-SemiBold.ttf */,
+			);
+			path = Fonts;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -506,6 +523,9 @@
 			buildActionMask = 2147483647;
 			files = (
 				B3B3B3B3B3B3B3B3B3B3B3B3 /* Assets.xcassets in Resources */,
+				15D194402C06FE9750872818 /* Montserrat-Bold.ttf in Resources */,
+				63D10EF129C3F934CB1481EE /* Poppins-Regular.ttf in Resources */,
+				D3098EED279807C578FE40AD /* Poppins-SemiBold.ttf in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

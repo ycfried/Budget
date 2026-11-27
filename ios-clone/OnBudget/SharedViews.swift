@@ -576,6 +576,14 @@ public struct SuccessBox: View {
 /// while the app loads. This ring is the branded splash
 /// exception to the no-spinner rule (a thin arc around the logo,
 /// not a generic spinner); the three grey skeleton bars stay gone.
+///
+/// Lockup #2 wordmark/tagline blue (owner, Nov 26, 2026): #3854d8,
+/// sampled from the new 5-bar icon's outer-right bar; sits next to
+/// the app's deep blue #1d4ed8. Used ONLY for the splash lockup
+/// wordmark + tagline — NOT a brand palette color (DesignTokens is
+/// untouched).
+private let splashLockupBlue = Color(red: 0x38/255.0, green: 0x54/255.0, blue: 0xd8/255.0)
+
 public struct LoadingView: View {
     /// Drives the loading ring's rotation (false → true on appear,
     /// then repeating — the same pattern as the sync button's spin).
@@ -584,11 +592,12 @@ public struct LoadingView: View {
     public var body: some View {
         VStack(spacing: 6) {
             // ONE horizontal line (owner, Nov 20, 2026 — build 50):
-            // the S logo IS the S of STAGE — the logo (larger, the
-            // main part, with its animated brand-blue ring) + "T ·
-            // A · G · E" beside it, a blue dot between the S and
-            // the T, reading as one word S · T · A · G · E. The
-            // stacked layout read as "S" then "TAGE".
+            // the logo + the word beside it, reading as one
+            // lockup. Owner, Nov 26, 2026 (lockup #2): the 5-bar
+            // icon (72pt, NOT shrunk) + the full word "Stage" in
+            // Montserrat Bold, #3854d8, sized so it spans the
+            // same width as the tagline below. The stacked layout
+            // read as "S" then "TAGE" and is wrong.
             HStack(spacing: 4) {
                 // The real logo (Assets.xcassets/AppLogo), not the "S"
                 // placeholder ring (owner, Nov 11, 2026) — plain,
@@ -603,60 +612,70 @@ public struct LoadingView: View {
                 // reads as loading, not frozen. Owner, Nov 26,
                 // 2026: the light full-circle track ring is gone —
                 // it read as an ugly pale circle; only the darker
-                // arc moves around the logo now. The ring sits 7pt
-                // outside the 72pt logo (build 74 FINAL — the 48pt
-                // mark was wrong; the S is not shrunk).
+                // arc moves around the logo now. (Build 74 FINAL:
+                // the 48pt mark was wrong; the S is not shrunk.)
+                // Owner, Nov 26, 2026 (new 5-bar icon): the logo
+                // is a rounded SQUARE now, not a circle — the
+                // circle clip is dropped so the outer bars are not
+                // cropped. The ring is enlarged to 104pt so the
+                // circular arc clears the square's corners (the
+                // square's farthest corner is ~44pt from centre;
+                // 104pt keeps the same ~7pt clearance the 86pt
+                // ring had around the old circular logo).
                 ZStack {
                     Circle()
                         .trim(from: 0, to: 0.3)
                         .stroke(DesignTokens.stageBlue, style: StrokeStyle(lineWidth: 3, lineCap: .round))
-                        .frame(width: 86, height: 86)
+                        .frame(width: 104, height: 104)
                         .rotationEffect(.degrees(ringSpinning ? 360 : 0))
                         .animation(.linear(duration: 1.2).repeatForever(autoreverses: false), value: ringSpinning)
                     Image("AppLogo")
                         .resizable()
                         .scaledToFit()
                         .frame(width: 72, height: 72)
-                        .clipShape(Circle())
                 }
                 .onAppear { ringSpinning = true }
-                // The S logo IS the S of STAGE (owner, Nov 18, 2026 —
-                // build 47): the logo + "T · A · G · E", never the logo
-                // next to the full word "STAGE" (no second S).
-                // Build 74 (owner, Nov 25, 2026 — DECIDED, FINAL
-                // proportions, ~00:59): STAGE on ONE LINE — the
-                // mark (72pt, its previous size — NOT shrunk) +
-                // letters (40pt medium, sized up from 32pt light)
-                // tight together (4pt gap), reading left to right
-                // as a single word; the stacked version is wrong.
-                // Uniform stageBlue #0288dd.
-                StageWordmarkText(font: .system(size: 40, weight: .medium))
+                // Owner, Nov 26, 2026 (new 5-bar icon + lockup
+                // #2): the splash lockup is the 5-bar icon + the
+                // full word "Stage" in Montserrat Bold, #3854d8
+                // (sampled from the icon's outer-right bar).
+                // "Stage" is 71pt so it spans the same width as
+                // the tagline below, matching the lockup
+                // proportions. The old "S logo + T · A · G · E"
+                // construction (StageWordmarkText, 40pt medium,
+                // stageBlue) is retired on the splash only —
+                // StageWordmarkText itself is untouched and still
+                // used by the auth screen and the widget.
+                Text("Stage")
+                    .font(.custom("Montserrat-Bold", size: 71))
+                    .foregroundStyle(splashLockupBlue)
             }
             // Build 74 (owner, Nov 25, 2026 — DECIDED): the tagline
             // is "Spend Track And Give Easily" — NO periods,
             // and the FIRST LETTER of each word is BOLD so the bold
             // initials spell STAGE. Owner, Nov 26, 2026: "Spend
             // Track And Give Easily" replaces "Spending Tracking
-            // And Giving Easily" (build 74) — same 15pt semibold
-            // base, same uniform stageBlue #0288dd; only the
-            // initials are heavy. The tagline sits BELOW the
-            // one-line lockup, 6pt under it (the VStack spacing —
-            // was 12pt, and the tagline floated too far below
-            // STAGE).
+            // And Giving Easily" (build 74) — same 15pt base, same
+            // uniform color; only the initials are heavy. The
+            // tagline sits BELOW the one-line lockup, 6pt under
+            // it (the VStack spacing — was 12pt, and the tagline
+            // floated too far below STAGE). Owner, Nov 26, 2026
+            // (lockup #2): the tagline is Poppins — SemiBold
+            // initials, Regular rest — in the lockup blue #3854d8,
+            // matching the "Stage" wordmark above it.
             (
-                Text("S").fontWeight(.heavy)
-                + Text("pend ")
-                + Text("T").fontWeight(.heavy)
-                + Text("rack ")
-                + Text("A").fontWeight(.heavy)
-                + Text("nd ")
-                + Text("G").fontWeight(.heavy)
-                + Text("ive ")
-                + Text("E").fontWeight(.heavy)
-                + Text("asily")
+                Text("S").font(.custom("Poppins-SemiBold", size: 15))
+                + Text("pend ").font(.custom("Poppins-Regular", size: 15))
+                + Text("T").font(.custom("Poppins-SemiBold", size: 15))
+                + Text("rack ").font(.custom("Poppins-Regular", size: 15))
+                + Text("A").font(.custom("Poppins-SemiBold", size: 15))
+                + Text("nd ").font(.custom("Poppins-Regular", size: 15))
+                + Text("G").font(.custom("Poppins-SemiBold", size: 15))
+                + Text("ive ").font(.custom("Poppins-Regular", size: 15))
+                + Text("E").font(.custom("Poppins-SemiBold", size: 15))
+                + Text("asily").font(.custom("Poppins-Regular", size: 15))
             )
-                .foregroundStyle(DesignTokens.stageBlue)
-                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(splashLockupBlue)
             // Build 65 (owner, Nov 23, 2026): NO skeleton bars
             // here — the three grey bars read as stray boxes / a
             // bug on the splash. The splash is logo + tagline

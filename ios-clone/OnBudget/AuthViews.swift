@@ -65,7 +65,10 @@ public struct AuthBrandHeader: View {
                 .resizable()
                 .scaledToFit()
                 .frame(width: 72, height: 72)
-                .clipShape(Circle())
+            // Owner, Nov 26, 2026 (new 5-bar icon): the logo is a
+            // rounded SQUARE now, not a circle — no circle clip,
+            // so the outer bars are not cropped (same reason as
+            // the splash; the AppLogo asset is shared).
             // The S logo IS the S of STAGE (owner, Nov 18, 2026 —
             // build 47): the logo + "T · A · G · E", never the logo
             // next to the full word "STAGE" (no second S).
