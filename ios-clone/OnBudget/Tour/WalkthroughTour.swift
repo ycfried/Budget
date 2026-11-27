@@ -187,8 +187,8 @@ public enum TourAnchor: String, CaseIterable {
     case merchantsChip
 }
 
-/// One step of the walkthrough (v3 plan, 39 steps — the owner's
-/// order, Nov 26, 2026). The `line` is the one short plain line
+/// One step of the walkthrough (v3 plan, 39 steps — grouped
+/// by page, Nov 27, 2026). The `line` is the one short plain line
 /// the tooltip shows; `tab` is the screen the step lives on (nil
 /// for the Settings steps, which present over the current tab);
 /// `anchor` is the element the arrow points at (nil only for
@@ -196,6 +196,21 @@ public enum TourAnchor: String, CaseIterable {
 /// the step lives in (nil for shell steps — the overlay drives
 /// `appState.tourSheet` from it, and `showSettings` for the
 /// Settings steps).
+///
+/// Nov 27, 2026 (owner — the video "looks a bit out of
+/// order"): the steps used to run by TOPIC (pages, connect,
+/// allowance, Tzedaka, everything else), which hopped between
+/// pages 14 times in 30 steps — Home, Transactions, Funds,
+/// Settings, back to Home, Funds, Home, Funds, Transactions,
+/// Funds, Home — so the viewer was yanked around and the
+/// giving story was split across a tab hop (charityCard on
+/// Home, charityRules on Funds). The order is now grouped BY
+/// PAGE, so each page is visited exactly once: every Home step,
+/// then every Transactions step, then every Funds step, then
+/// Connect (Settings), then Close. Each page's overview leads
+/// its own section, and the sheets (Weekly, Calculator, Add)
+/// sit inside their page's section. Same 39 steps, same lines —
+/// only the order changed.
 ///
 /// The through-line (owner, Nov 26, 2026 — the CORE IDEA): the
 /// app suggests, from the user's OWN rules, what to spend each
@@ -206,15 +221,10 @@ public enum TourAnchor: String, CaseIterable {
 /// Savings steps are the "what to put aside" suggestion, the
 /// Tzedaka steps are the "what to give" suggestion.
 public enum TourStep: Int, CaseIterable {
-    // Section 1 — the 3 main pages.
+    // Section 1 — Home: the overview, the spending number, the
+    // Weekly sheet, and the giving number on the Tzedaka card.
     case welcome
     case homePage
-    case transactionsPage
-    case fundsPage
-    // Section 2 — connect (Settings > Connections).
-    case connectBank
-    case connectEmail
-    // Section 3 — the allowance (Weekly sheet + Calculator).
     case spendingNumber
     case weeklyBudget
     case weeklyNumbers
@@ -222,18 +232,10 @@ public enum TourStep: Int, CaseIterable {
     case weeklyAdjust
     case weeklySetNew
     case weeklyCalculatorRow
-    case calculator
-    case calcSuggestion
-    case calcIncome
-    case calcHousehold
-    case calcExpenses
-    case calcCharity
-    case calcApply
-    // Section 4 — Tzedaka.
     case charityCard
-    case charityRules
-    case charityActions
-    // Section 5 — everything else.
+    // Section 2 — Transactions: the overview, adding, rows,
+    // finding, and getting data out.
+    case transactionsPage
     case addButton
     case addPurchase
     case addDonation
@@ -243,12 +245,27 @@ public enum TourStep: Int, CaseIterable {
     case needsReview
     case export
     case merchantRules
+    // Section 3 — Funds: the overview, the giving setup, the
+    // Calculator, saving, and debt.
+    case fundsPage
+    case charityRules
+    case charityActions
+    case calculator
+    case calcSuggestion
+    case calcIncome
+    case calcHousehold
+    case calcExpenses
+    case calcCharity
+    case calcApply
     case savingsCard
     case savingsActions
     case debtCard
     case debtIdea
     case debtRule
     case debtActions
+    // Section 4 — Connect (Settings > Connections).
+    case connectBank
+    case connectEmail
     case close
 
     public var line: String {
@@ -761,6 +778,20 @@ public struct TourOverlayView: View {
                 tooltipCard(step: step)
                     .frame(width: cardWidth)
                     .position(x: size.width / 2, y: cardTop + cardHeight / 2)
+                    // Nov 27, 2026 (owner — the sheets "slide/dip
+                    // down mid-load" in the tour video): the card
+                    // first renders at the 140pt estimate's
+                    // position, then JUMPS to its measured
+                    // position once the height preference lands —
+                    // a ~30pt drop a beat after each sheet opens,
+                    // which reads as the sheet dipping. The
+                    // position change is now a 0.2s ease, so the
+                    // card settles smoothly instead of jumping.
+                    // Only cardHeight drives it — a step change
+                    // still moves the card at once via its new
+                    // target, and the 0.2s settle is far shorter
+                    // than the step's dwell.
+                    .animation(.easeOut(duration: 0.2), value: cardHeight)
             }
             // The card height, reported per step (see
             // TourCardHeightKey): the step rides along so a

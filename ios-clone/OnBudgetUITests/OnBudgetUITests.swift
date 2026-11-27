@@ -1100,6 +1100,33 @@ final class OnBudgetUITests: XCTestCase {
     /// Run ONLY via the tour-video workflow
     /// (ios-clone-tour-video.yml / macos_tour_video.sh) — it is not
     /// part of the simulator proof suite.
+    /// Per-step dwell for the tour video (Nov 27, 2026 — the
+    /// owner called the video too slow AND hard to follow, and
+    /// asked for voice narration). One entry per MEMBER-visible
+    /// step, in tour order (the reordered, page-grouped tour —
+    /// 30 steps for a member; the 9 admin-only / Needs-Review
+    /// steps are skipped and take no dwell). Each value is that
+    /// step's narration length (measured from the TTS render of
+    /// the step's own line, default voice) + a 0.7 s beat,
+    /// rounded up to the nearest half second, minimum 2.5 s —
+    /// so the voice finishes just before Next is tapped, and
+    /// the short steps don't sit in dead air. If a tour line
+    /// changes, re-measure its narration and update its entry;
+    /// if the tour order changes, reorder this table to match.
+    /// The entries, in order: welcome, homePage, spendingNumber,
+    /// weeklyBudget, weeklyNumbers, weekClose,
+    /// weeklyCalculatorRow, charityCard, transactionsPage,
+    /// addButton, addPurchase, openRow, searchFilters, export,
+    /// fundsPage, charityRules, calculator, calcSuggestion,
+    /// calcIncome, calcHousehold, calcExpenses, calcCharity,
+    /// calcApply, savingsCard, debtCard, debtIdea, debtRule,
+    /// connectBank, connectEmail, close.
+    private let tourVideoDwell: [TimeInterval] = [
+        8.5, 6.5, 3.5, 6.0, 5.5, 5.5, 6.5, 7.0, 5.5, 2.5,
+        4.0, 6.0, 2.5, 6.5, 4.5, 5.5, 5.5, 8.0, 3.5, 4.5,
+        7.0, 5.0, 8.0, 6.0, 3.0, 5.0, 7.0, 4.5, 5.5, 7.0,
+    ]
+
     func testTourVideo() throws {
         guard let account = createConfirmedTestAccount() else { return }
         signInWithAccount(email: account.email, password: account.password)
@@ -1157,11 +1184,19 @@ final class OnBudgetUITests: XCTestCase {
         )
         videoMark("TOUR-START")
 
+        // The Welcome step's dwell: the loop below taps Next
+        // immediately after TOUR-START, so Welcome used to flash
+        // for ~0.2s (run 46035674866) — far too short to read or
+        // to narrate. Give it its full dwell first.
+        Thread.sleep(forTimeInterval: tourVideoDwell[0])
+
         // Step through the tour: tap Next (Done on the last step),
         // wait for the transition (tab switch / sheet open / close),
         // repeat until the tooltip is gone. Cap at 45 taps so a
-        // stuck tour cannot loop forever. 2.5 s per step is a brisk
-        // but watchable pace — the owner reads each tooltip.
+        // stuck tour cannot loop forever. The dwell after each tap
+        // is the NEXT step's narration time (see tourVideoDwell):
+        // a fixed sleep starves the long lines and leaves dead
+        // air on the short ones, so each step gets its own dwell.
         var taps = 0
         while taps < 45 {
             if app.buttons["Done"].exists {
@@ -1178,7 +1213,11 @@ final class OnBudgetUITests: XCTestCase {
             taps += 1
             videoMark("TOUR-STEP-\(taps)")
             tapCoordinate(app.buttons["Next"])
-            Thread.sleep(forTimeInterval: 2.5)
+            if taps < tourVideoDwell.count {
+                Thread.sleep(forTimeInterval: tourVideoDwell[taps])
+            } else {
+                Thread.sleep(forTimeInterval: 2.5)
+            }
         }
         // The tour is over when its tooltip (Next/Done) is gone.
         XCTAssertFalse(app.buttons["Next"].exists, "Tour tooltip still showing after \(taps) Next taps")
