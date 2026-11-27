@@ -604,13 +604,42 @@ public struct TourAnchorModifier: ViewModifier {
     public func body(content: Content) -> some View {
         content.background(
             GeometryReader { proxy in
+                let frame = proxy.frame(in: .named("tourSpace"))
                 Color.clear
+                    // Nov 27, 2026 (tour highlight fix — the
+                    // owner: highlight boxes land in the wrong
+                    // place, e.g. steps 3, 9, 22, 24, 31, 35):
+                    // the frame rides a PREFERENCE now, not only
+                    // the onChange below. A preference is
+                    // re-collected on EVERY layout pass — when a
+                    // sibling above the anchor grows (the Weekly
+                    // sheet's Purchases row, the Charity card's
+                    // off-card footnote, the Spending card's
+                    // Temporary Allowance note, the Debt card's
+                    // This Week's Payment row), when the card
+                    // expands, and when the list scrolls — so the
+                    // overlay always draws the CURRENT frame. The
+                    // onChange below only fired when this
+                    // background's own body re-ran, which a pure
+                    // move (no resize of the anchored view itself)
+                    // does not do — so the overlay kept drawing
+                    // the frame from the first measurement (loading
+                    // / pre-expansion layout), up to ~85pt above
+                    // the real target, and the tooltip placed from
+                    // that stale frame landed on top of the real
+                    // target. The collector (tourFrameCollector,
+                    // on each overlay host) stores the preference
+                    // into the tour state.
+                    .preference(
+                        key: TourAnchorFrameKey.self,
+                        value: anchor.map { [$0: frame] } ?? [:]
+                    )
                     .onAppear {
                         if let anchor, let tour {
-                            tour.setFrame(anchor, proxy.frame(in: .named("tourSpace")))
+                            tour.setFrame(anchor, frame)
                         }
                     }
-                    .onChange(of: proxy.frame(in: .named("tourSpace"))) { _, new in
+                    .onChange(of: frame) { _, new in
                         if let anchor, let tour {
                             tour.setFrame(anchor, new)
                         }
@@ -620,10 +649,59 @@ public struct TourAnchorModifier: ViewModifier {
     }
 }
 
+/// The walkthrough anchors' CURRENT frames, as a preference
+/// (Nov 27, 2026 — highlight fix, see TourAnchorModifier): each
+/// anchor reports its frame in its container's "tourSpace"; the
+/// values merge (one entry per anchor) and the overlay hosts
+/// collect them into the tour state (tourFrameCollector). A
+/// preference is re-collected on every layout pass, so a frame
+/// that moves or grows after its first measurement — async rows
+/// appearing above it, a card expanding, a list scrolling —
+/// reaches the overlay, where the old onChange-only reporting
+/// never re-fired for a pure move.
+private struct TourAnchorFrameKey: PreferenceKey {
+    static var defaultValue: [TourAnchor: CGRect] = [:]
+    static func reduce(value: inout [TourAnchor: CGRect], nextValue: () -> [TourAnchor: CGRect]) {
+        value.merge(nextValue()) { _, new in new }
+    }
+}
+
+/// Collects the anchors' preference frames into the tour state
+/// (Nov 27, 2026 — highlight fix): attached to each container
+/// that renders a TourOverlayView (the shell, the Settings
+/// cover, the Weekly sheet, the Calculator sheet, the Add
+/// cover), so the overlay in that container always draws the
+/// frames measured in THAT container's "tourSpace". A no-op
+/// when there is no tour.
+public struct TourFrameCollectorModifier: ViewModifier {
+    public let tour: TourState?
+
+    public init(tour: TourState?) {
+        self.tour = tour
+    }
+
+    public func body(content: Content) -> some View {
+        content.onPreferenceChange(TourAnchorFrameKey.self) { frames in
+            guard let tour else { return }
+            for (anchor, frame) in frames {
+                tour.setFrame(anchor, frame)
+            }
+        }
+    }
+}
+
 public extension View {
     /// Attach a walkthrough anchor to a view (no-op when nil).
     func tourAnchor(_ anchor: TourAnchor?, tour: TourState?) -> some View {
         modifier(TourAnchorModifier(anchor: anchor, tour: tour))
+    }
+
+    /// Collect the walkthrough anchors' frames (see
+    /// TourAnchorFrameKey) into the tour state. Attach to the
+    /// container that renders the TourOverlayView for those
+    /// anchors, next to its "tourSpace".
+    func tourFrameCollector(tour: TourState?) -> some View {
+        modifier(TourFrameCollectorModifier(tour: tour))
     }
 }
 
@@ -631,7 +709,10 @@ public extension View {
 
 /// The dim + cutout: the whole screen dimmed, with a rounded-rect
 /// hole around the target frame (even-odd fill), so the target reads
-/// as the one lit thing on the screen.
+/// as the one lit thing on the screen. Nov 27, 2026 (highlight
+/// fix): 10pt of air around the target (was 6pt), so the highlight
+/// never clips the target's edge text when the frame is a few
+/// points off — the cutout and the white stroke match (target + 20).
 private struct TourDimCutout: View {
     let frame: CGRect
     let containerSize: CGSize
@@ -640,8 +721,8 @@ private struct TourDimCutout: View {
         Path { path in
             path.addRect(CGRect(origin: .zero, size: containerSize))
             path.addRoundedRect(
-                in: frame.insetBy(dx: -6, dy: -6),
-                cornerSize: CGSize(width: 12, height: 12)
+                in: frame.insetBy(dx: -10, dy: -10),
+                cornerSize: CGSize(width: 14, height: 14)
             )
         }
         // Build 68 (item 6): a LIGHTER dim (0.32, was 0.55) so
@@ -680,8 +761,9 @@ private struct TourArrow: View {
 /// The walkthrough overlay: dim + cutout + border around the current
 /// target, and the tooltip card with the one line, the step count,
 /// and Back / Skip tour / Next (Done on the last step). The card sits below the
-/// target when it fits there, else above it, with the arrow pointing
-/// at the target. When a step has no target yet (the new tab is still
+/// target when it fits there, else above it, else flush against the
+/// target on the roomier side — never over the target — with the
+/// arrow pointing at the target. When a step has no target yet (the new tab is still
 /// laying out) or no target at all (Close), the card sits at the
 /// bottom of the screen with no cutout.
 public struct TourOverlayView: View {
@@ -746,9 +828,9 @@ public struct TourOverlayView: View {
             ZStack(alignment: .topLeading) {
                 if let target {
                     TourDimCutout(frame: target, containerSize: size)
-                    RoundedRectangle(cornerRadius: 12)
+                    RoundedRectangle(cornerRadius: 14)
                         .stroke(Color.white, lineWidth: 2)
-                        .frame(width: target.width + 12, height: target.height + 12)
+                        .frame(width: target.width + 20, height: target.height + 20)
                         .position(x: target.midX, y: target.midY)
                 } else {
                     // Build 68 (item 6): same lighter dim as the
@@ -835,24 +917,42 @@ public struct TourOverlayView: View {
     }
 
     /// The tooltip card's top edge: below the target when it fits
-    /// there, else above the target, else clamped to the screen
-    /// (above the bottom safe area). No target → the bottom of the
-    /// screen.
+    /// there, else above the target, else flush against the target
+    /// on the side with more room. The last branch NEVER slides
+    /// the card over the target: the old fallback clamped the card
+    /// to the bottom of the screen, which pulled it up over a
+    /// near-bottom target (steps 9, 22, 35 in the Nov 27 video —
+    /// the tooltip covered the very row it pointed at). A card
+    /// taller than the room on its side runs past the far edge
+    /// instead of covering what the tour is pointing at. The
+    /// scroll-to (scrollTourAnchorIntoView, .center) lands the
+    /// target where a side fits for every real target, so the
+    /// flush branch is a safety net, not a placement. No target →
+    /// the bottom of the screen.
     private func cardTopY(containerSize: CGSize, target: CGRect?, bottomInset: CGFloat) -> CGFloat {
         let topSafe: CGFloat = 8
         let bottomLimit = containerSize.height - bottomInset - 8
         guard let target else {
             return max(topSafe, bottomLimit - cardHeight)
         }
-        let belowTop = target.maxY + 16
+        let gap: CGFloat = 16
+        let belowTop = target.maxY + gap
         if belowTop + cardHeight <= bottomLimit {
             return belowTop
         }
-        let aboveTop = target.minY - 16 - cardHeight
+        let aboveTop = target.minY - gap - cardHeight
         if aboveTop >= topSafe {
             return aboveTop
         }
-        return max(topSafe, bottomLimit - cardHeight)
+        // Neither side fits: the side with more room, flush
+        // against the target — the tooltip never covers its own
+        // highlight.
+        let roomBelow = bottomLimit - belowTop
+        let roomAbove = target.minY - gap - topSafe
+        if roomBelow >= roomAbove {
+            return belowTop
+        }
+        return aboveTop
     }
 
     /// The tooltip card: the one line, the step count, Back /

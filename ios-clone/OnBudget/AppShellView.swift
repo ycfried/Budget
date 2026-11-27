@@ -138,6 +138,11 @@ public struct AppShellView: View {
         // below draws in the same space, so the cutout and the
         // tooltip land on the real element.
         .coordinateSpace(name: "tourSpace")
+        // Nov 27, 2026 (tour highlight fix): collect the anchors'
+        // preference frames into the tour state (see
+        // tourFrameCollector in WalkthroughTour.swift) — the
+        // overlay below reads them from there.
+        .tourFrameCollector(tour: appState.tour)
         .overlay {
             // Tour fix (Nov 27, 2026 — owner: duplicate tooltip +
             // misplaced highlight on sheet steps, e.g. step 15
@@ -291,6 +296,10 @@ public struct AppShellView: View {
         // live on the Connections subpage, which the tour opens
         // by driving `settingsPath` (see syncSettingsPathForTour).
         .coordinateSpace(name: "tourSpace")
+        // Nov 27, 2026 (tour highlight fix): collect the anchors'
+        // preference frames into the tour state (see
+        // tourFrameCollector in WalkthroughTour.swift).
+        .tourFrameCollector(tour: appState.tour)
         .overlay {
             if appState.tour.isActive, appState.tour.currentStep.sheet == .settings {
                 TourOverlayView(tour: appState.tour, appState: appState)

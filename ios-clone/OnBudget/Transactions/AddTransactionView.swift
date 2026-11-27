@@ -137,6 +137,10 @@ public struct AddTransactionView: View {
         // step belonging to the Add cover. Attached to the root
         // VStack, so the overlay measures the cover itself.
         .coordinateSpace(name: "tourSpace")
+        // Nov 27, 2026 (tour highlight fix): collect the anchors'
+        // preference frames into the tour state (see
+        // tourFrameCollector in WalkthroughTour.swift).
+        .tourFrameCollector(tour: appState?.tour)
         .overlay {
             if let appState, appState.tour.isActive, appState.tour.currentStep.sheet == .add {
                 // The real transactions view model, not nil: the

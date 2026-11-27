@@ -2545,6 +2545,10 @@ public struct WeeklyBudgetCalculatorSheet: View {
         // step belonging to the Calculator. Attached to the root
         // VStack, so the overlay measures the sheet itself.
         .coordinateSpace(name: "tourSpace")
+        // Nov 27, 2026 (tour highlight fix): collect the anchors'
+        // preference frames into the tour state (see
+        // tourFrameCollector in WalkthroughTour.swift).
+        .tourFrameCollector(tour: appState.tour)
         .overlay {
             if appState.tour.isActive, appState.tour.currentStep.sheet == .calculator {
                 TourOverlayView(tour: appState.tour, appState: appState)

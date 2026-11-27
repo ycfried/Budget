@@ -825,6 +825,11 @@ private struct FittedSheetOnIPad<SheetContent: View>: ViewModifier {
             content.sheet(isPresented: $isPresented, onDismiss: onDismiss) {
                 sheetContent()
                     .coordinateSpace(name: "tourSpace")
+                    // Nov 27, 2026 (tour highlight fix): collect
+                    // the anchors' preference frames into the tour
+                    // state (see tourFrameCollector in
+                    // WalkthroughTour.swift).
+                    .tourFrameCollector(tour: appState?.tour)
                     .overlay { tourOverlay }
                     .presentationSizing(.fitted)
                     .presentationBackground(.white)
@@ -836,6 +841,10 @@ private struct FittedSheetOnIPad<SheetContent: View>: ViewModifier {
                     sheetContent()
                 }
                 .coordinateSpace(name: "tourSpace")
+                // Nov 27, 2026 (tour highlight fix): collect the
+                // anchors' preference frames into the tour state
+                // (see tourFrameCollector in WalkthroughTour.swift).
+                .tourFrameCollector(tour: appState?.tour)
                 .overlay { tourOverlay }
             }
         }
