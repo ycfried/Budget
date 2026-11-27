@@ -424,12 +424,19 @@ public struct TransactionsView: View {
                         fundNames: appState.fundNames,
                         onDismiss: { actionsTransaction = nil }
                     )
-                    // Build 64 (C-5, follow-up): overlay inside the
-                    // sheet — a sheet presents above the shell root too,
-                    // so the action confirmations (which fire through
-                    // the view model into the app-shell toast) need the
-                    // popup attached here to be seen.
-                    .toastOverlay($appState.toast)
+                    // Nov 27, 2026 (owner — TWO "Transaction
+                    // reclassified." toasts at once): NO toast
+                    // overlay here. This is a fitted / .medium
+                    // detent sheet, not a full-screen cover, so
+                    // the shell-root toast (AppShellView) stays
+                    // visible above it — and the copy that was
+                    // attached here rendered the SAME
+                    // `$appState.toast` a second time, over the
+                    // sheet. One presenter (the shell root) shows
+                    // it once. The fullScreenCover copies above
+                    // (Filters / Add / Trash / Export) stay: the
+                    // shell root sits underneath a cover, so those
+                    // still need their own.
                 }
                 // Build 67 (owner, Nov 23, 2026): the expense editor,
                 // opened right after tagging from the Actions sheet —
@@ -451,7 +458,12 @@ public struct TransactionsView: View {
                         },
                         onClose: { taggedExpense = nil }
                     )
-                    .toastOverlay($appState.toast)
+                    // Nov 27, 2026 (owner — duplicate toast):
+                    // NO toast overlay here, same as the Actions
+                    // sheet above. The editor is a fitted sheet,
+                    // not a full-screen cover, so the shell-root
+                    // toast stays visible above it — a copy here
+                    // rendered the same `$appState.toast` twice.
                 }
         }
     }

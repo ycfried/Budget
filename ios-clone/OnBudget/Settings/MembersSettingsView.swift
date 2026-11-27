@@ -48,6 +48,17 @@
 //   Copy writes the clipboard and flips to "Copied" for 2s; Share
 //   uses the native share sheet with
 //   "Join my household on STAGE with invite code CODE".
+// - Rename: RPC `rename_household(p_household_id, p_name)`
+//   (`supabase/rename-household.sql`, Nov 27, 2026) — OWNER-ONLY
+//   (the server checks `households.owner_id = auth.uid()`, the
+//   same owner check this screen uses client-side for the invite
+//   code). The owner-only pencil next to "Household: <name>"
+//   opens an inline editor (field pre-filled + Save / Cancel);
+//   a blank name fails inline, names cap at 80 characters (the
+//   creation cap). On success the screen re-reads the name from
+//   the server and toasts "Household renamed.", and AppState is
+//   told via `.householdNameDidChange` so the shell top bar
+//   updates without a restart. Non-owners never see the pencil.
 // - Delete Account: two-step confirm, then
 //   `EdgeFunctionsClient.deleteAccount()` (no household id — the
 //   function derives it from the caller). On failure the server
@@ -89,6 +100,12 @@ func shortMemberName(_ fullName: String) -> String {
 /// instead of showing a stale row until the next cold load.
 extension Notification.Name {
     static let displayNameDidChange = Notification.Name("OnBudget.displayNameDidChange")
+    /// Posted when the owner renames the household
+    /// (MembersSettingsViewModel.saveRename) — the object is the new
+    /// name (String). AppState observes it so the shell top bar
+    /// (and everywhere else that reads the shared household name)
+    /// updates without a restart.
+    static let householdNameDidChange = Notification.Name("OnBudget.householdNameDidChange")
 }
 
 @MainActor
@@ -104,6 +121,18 @@ final class MembersSettingsViewModel: ObservableObject {
     /// still in flight).
     @Published var inviteCodeLoaded = false
     @Published var householdName: String?
+    /// Rename (owner, Nov 27, 2026): the inline editor state. The
+    /// pencil next to the household name opens it (owner-only); the
+    /// draft is pre-filled with the current name. `renameError` is
+    /// the inline failure line under the field — a failed save
+    /// never clears the draft, so the typed name survives a retry.
+    @Published var isRenamingHousehold = false
+    @Published var renameDraft = ""
+    @Published var renameError: String?
+    /// A save in flight. A duplicate tap is ignored instead of
+    /// disabling the button (owner rule: no greyed-out buttons —
+    /// only buttons that work).
+    @Published var isSavingRename = false
     @Published var loadError: String?
     /// True after a failed load until a load succeeds. The members
     /// section shows the error + Retry while this is set — never a
@@ -363,6 +392,60 @@ final class MembersSettingsViewModel: ObservableObject {
         }
     }
 
+    // MARK: - Rename household (owner-only, Nov 27, 2026)
+
+    /// Open the inline editor, pre-filled with the current name.
+    /// Owner-only: the pencil that calls this is hidden for
+    /// everyone else, and the server re-checks ownership.
+    func startRename() {
+        renameDraft = householdName ?? ""
+        renameError = nil
+        isRenamingHousehold = true
+    }
+
+    func cancelRename() {
+        isRenamingHousehold = false
+        renameError = nil
+    }
+
+    /// Save the draft via the `rename_household` RPC
+    /// (`supabase/rename-household.sql`). The name is stored
+    /// exactly as typed (trimmed, no Title Case forcing). A blank
+    /// name fails inline (the same "Enter a household name."
+    /// check as creation); an unchanged name just closes, with no
+    /// server call. On success the screen re-reads the name from
+    /// the server (`load()`), so the new name showing after the
+    /// save is the persisted value, not the typed echo — and the
+    /// shell is told too, so its top bar updates without a
+    /// restart. A failure keeps the draft and shows a plain
+    /// message under the field.
+    func saveRename() async {
+        guard !isSavingRename else { return }
+        if let error = AuthValidation.householdNameError(renameDraft) {
+            renameError = error
+            return
+        }
+        let trimmed = renameDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed == householdName?.trimmingCharacters(in: .whitespacesAndNewlines) {
+            isRenamingHousehold = false
+            renameError = nil
+            return
+        }
+        isSavingRename = true
+        defer { isSavingRename = false }
+        do {
+            let saved = try await context.client.rpcs.renameHousehold(pHouseholdId: context.householdId, pName: trimmed)
+            householdName = saved
+            isRenamingHousehold = false
+            renameError = nil
+            toast.show("Household renamed.", kind: .success)
+            NotificationCenter.default.post(name: .householdNameDidChange, object: saved)
+            await load()
+        } catch {
+            renameError = settingsErrorMessage(error)
+        }
+    }
+
     // MARK: - Invite code
 
     func copyInviteCode() {
@@ -480,10 +563,32 @@ struct MembersSettingsView: View {
                 inviteCodeSection
             }
 
-            if let name = viewModel.householdName, !name.isEmpty {
-                Text("Household: \(name)")
-                    .font(.subheadline)
-                    .fontWeight(.semibold)
+            if viewModel.isRenamingHousehold {
+                householdRenameEditor
+            } else if let name = viewModel.householdName, !name.isEmpty {
+                HStack(spacing: 6) {
+                    Text("Household: \(name)")
+                        .font(.subheadline)
+                        .fontWeight(.semibold)
+                    // Rename (owner, Nov 27, 2026): the screen
+                    // showed the name as plain text with no edit
+                    // affordance. Owner-only pencil, the same
+                    // 28pt blue ⓘ-button treatment as the info
+                    // buttons on this card — hidden for admins
+                    // and members, and the server re-checks
+                    // ownership on save.
+                    if viewModel.isOwner {
+                        Button { viewModel.startRename() } label: {
+                            Image(systemName: "pencil")
+                                .font(.system(size: 15, weight: .semibold))
+                                .foregroundStyle(DesignTokens.primary)
+                                .frame(width: 28, height: 28)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Rename household")
+                    }
+                }
             }
 
             // Build 43 (owner, Nov 17, 2026 — item 14): the role
@@ -683,6 +788,37 @@ struct MembersSettingsView: View {
             SkeletonBlock(width: 48, height: 14)
             Spacer()
             SkeletonBlock(width: 80, height: 32, cornerRadius: 10)
+        }
+    }
+
+    /// The inline rename editor (owner, Nov 27, 2026): the field
+    /// pre-filled with the current name, Save + Cancel below it.
+    /// Save is solid blue, Cancel the tertiary outline — two
+    /// adjacent buttons never share a colour (standing rule).
+    /// A duplicate Save tap while one is in flight is ignored,
+    /// never a greyed-out button.
+    private var householdRenameEditor: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            LabeledField(label: "Household Name", text: $viewModel.renameDraft)
+                .onChange(of: viewModel.renameDraft) { _, newValue in
+                    // Same 80-character cap as creation
+                    // (HouseholdViews / create_household).
+                    if newValue.count > 80 { viewModel.renameDraft = String(newValue.prefix(80)) }
+                }
+            if let error = viewModel.renameError {
+                ErrorBox(error)
+            }
+            HStack(spacing: 12) {
+                Button("Save") {
+                    Task { await viewModel.saveRename() }
+                }
+                .buttonStyle(PrimaryButtonStyle())
+                .accessibilityLabel("Save household name")
+                Button("Cancel") {
+                    viewModel.cancelRename()
+                }
+                .buttonStyle(TertiaryButtonStyle())
+            }
         }
     }
 

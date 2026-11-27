@@ -118,7 +118,21 @@ struct SettingsView: View {
     }
 
     var body: some View {
-        ScrollView {
+        // Build 111 (owner, Nov 27, 2026): the back row + title
+        // are PINNED above the ScrollView now, not its first rows.
+        // They used to scroll with the content — and the opaque
+        // TopSafeAreaStrip overlay (which kept scrolled content
+        // off the clock) painted above all scroll content, so a
+        // scrolled page's back button slid behind the top bar,
+        // invisible and unreachable; on the Household & Members
+        // subpage the edge swipe was dead too, so there was no
+        // way back at all. The header keeps the exact at-rest
+        // spacing (16pt top pad, 20pt gaps); scrolled content
+        // passes behind its opaque background instead of under
+        // the strip, so the strip itself is gone. Same treatment
+        // on every subpage scaffold below (build 74 already did
+        // "ScrollViews under pinned headers" for the sheets).
+        VStack(alignment: .leading, spacing: 0) {
             VStack(alignment: .leading, spacing: 20) {
                 HStack {
                     BackButton(action: onBack)
@@ -128,10 +142,19 @@ struct SettingsView: View {
                     .font(.largeTitle)
                     .fontWeight(.bold)
                     .foregroundStyle(DesignTokens.ink)
-
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal)
+            .padding(.top)
+            .padding(.bottom, 20)
+            .background(DesignTokens.background)
+            ScrollView {
                 // Build 74: the hub — one row per area, each
                 // pushing its subpage. The section cards live on
-                // the subpages now, not here.
+                // the subpages now, not here. No top padding here:
+                // the header's 20pt bottom pad is already the gap
+                // below the title (a full .padding() would double
+                // it to 36pt).
                 SettingsCard {
                     VStack(spacing: 0) {
                         ForEach(Array(SettingsSubpage.allCases.enumerated()), id: \.element) { index, page in
@@ -142,10 +165,10 @@ struct SettingsView: View {
                         }
                     }
                 }
+                .padding(.horizontal)
+                .padding(.bottom)
             }
-            .padding()
         }
-        .overlay(alignment: .top) { TopSafeAreaStrip() }
         .toastOverlay(toast) // Top popup toast (owner, Nov 20, 2026 — build 50).
         .toolbar(.hidden, for: .navigationBar)
         .navigationDestination(for: SettingsSubpage.self) { page in
@@ -228,9 +251,10 @@ private struct SettingsHubRow: View {
 /// chevron + the page title, then the section card(s). Back pops
 /// via the environment dismiss: the stack itself lives in the
 /// shell's settingsCover, so there is no path binding here to pop.
-/// The toast overlay + the opaque top strip ride along, so a
-/// confirmation fired on a subpage still shows, and scrolled
-/// content still passes behind the clock, exactly as on the hub.
+/// The toast overlay rides along, so a confirmation fired on a
+/// subpage still shows. The header is pinned above the ScrollView
+/// (build 111): scrolled content passes behind its opaque
+/// background, never through the clock, exactly as on the hub.
 private struct SettingsSubpageScaffold<Content: View>: View {
     let title: String
     let toast: ToastState
@@ -246,56 +270,63 @@ private struct SettingsSubpageScaffold<Content: View>: View {
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
-        // Nov 26, 2026 (tour): the ScrollViewReader lets the
-        // tour scroll its current target into view on step
-        // change — the Connections cards can sit below the fold
-        // on a small phone. The sheet-based helper gates on the
-        // step belonging to Settings (the Settings steps have
-        // no tab).
-        ScrollViewReader { proxy in
-            ScrollView {
-                VStack(alignment: .leading, spacing: 20) {
-                    HStack {
-                        BackButton { dismiss() }
-                        Spacer()
-                    }
-                    Text(title)
-                        .font(.largeTitle)
-                        .fontWeight(.bold)
-                        .foregroundStyle(DesignTokens.ink)
+        // Build 111 (owner, Nov 27, 2026): the back row + title
+        // are PINNED above the ScrollView — same fix as the hub
+        // above. They used to be the ScrollView's first rows, so
+        // the back button scrolled up behind the opaque
+        // TopSafeAreaStrip overlay and could not be seen or
+        // tapped; with the edge swipe also dead on this stack,
+        // the Household & Members page had no way back at all.
+        // The header keeps the exact at-rest spacing (16pt top
+        // pad, 20pt gaps) and its opaque background is what
+        // scrolled content passes behind now, so the strip is
+        // gone. The tour's scroll-to still works: the
+        // ScrollViewReader wraps the ScrollView below.
+        VStack(alignment: .leading, spacing: 0) {
+            VStack(alignment: .leading, spacing: 20) {
+                HStack {
+                    BackButton { dismiss() }
+                    Spacer()
+                }
+                Text(title)
+                    .font(.largeTitle)
+                    .fontWeight(.bold)
+                    .foregroundStyle(DesignTokens.ink)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal)
+            .padding(.top)
+            .padding(.bottom, 20)
+            .background(DesignTokens.background)
+            // Nov 26, 2026 (tour): the ScrollViewReader lets the
+            // tour scroll its current target into view on step
+            // change — the Connections cards can sit below the fold
+            // on a small phone. The sheet-based helper gates on the
+            // step belonging to Settings (the Settings steps have
+            // no tab).
+            ScrollViewReader { proxy in
+                ScrollView {
                     VStack(alignment: .leading, spacing: 20) {
                         content
                     }
+                    // No top padding: the header's 20pt bottom pad
+                    // is already the gap below the title.
+                    .padding(.horizontal)
+                    .padding(.bottom)
                 }
-                .padding()
-            }
-            .onChange(of: tour.stepIndex) { _, _ in
-                scrollTourSheetAnchorIntoView(proxy, tour: tour, sheet: .settings)
+                .onChange(of: tour.stepIndex) { _, _ in
+                    scrollTourSheetAnchorIntoView(proxy, tour: tour, sheet: .settings)
+                }
             }
         }
-        .overlay(alignment: .top) { TopSafeAreaStrip() }
         .toastOverlay(toast)
         .toolbar(.hidden, for: .navigationBar)
         .enableSwipeBack()
-    }
-}
-
-/// Build 69 (owner, Nov 24, 2026): the card headers scrolled under
-/// the translucent status bar and read as overlapping the time
-/// ("Email Alerts" / "Connected Email" at the top). An opaque strip
-/// pinned to the top safe area keeps the time legible — scrolled
-/// content passes behind it, never through the clock. It takes no
-/// taps (status-bar area only). Shared by the hub and every subpage
-/// scaffold.
-private struct TopSafeAreaStrip: View {
-    var body: some View {
-        GeometryReader { proxy in
-            DesignTokens.background
-                .frame(height: proxy.safeAreaInsets.top)
-                .frame(maxWidth: .infinity, alignment: .top)
-        }
-        .frame(height: 0)
-        .allowsHitTesting(false)
+        // Build 111: explicit swipe-right-to-pop fallback — the
+        // system pop gesture did nothing on this stack despite
+        // `.enableSwipeBack()` above. Fires only when the system
+        // gesture is disabled; never double-pops.
+        .popSwipeBack()
     }
 }
 

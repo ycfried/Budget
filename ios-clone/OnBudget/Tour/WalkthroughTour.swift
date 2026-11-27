@@ -64,8 +64,14 @@
 // never fought. Each sheet/cover renders its own
 // `TourOverlayView` inside itself, gated on the current step
 // belonging to that sheet, with that sheet's own "tourSpace" —
-// the shell overlay sits behind the sheet, invisible and
-// harmless. If the user dismisses a tour sheet by hand, the
+// and the SHELL overlay is gated OFF for sheet steps
+// (`currentStep.sheet == nil`, AppShellView): a medium-detent /
+// fitted sheet leaves the presenting view visible above it, so
+// an ungated shell overlay rendered a SECOND tooltip over Home
+// and drew the sheet-measured frame in the shell's coordinate
+// space, in the wrong place/size (owner, Nov 27, 2026 —
+// duplicate tooltip + huge empty highlight box, e.g. step 15).
+// If the user dismisses a tour sheet by hand, the
 // sheet's onDismiss clears that sheet's frames, so the shell
 // overlay shows the tooltip with no cutout and Next still
 // advances — no auto-advance on manual dismiss, by design.

@@ -785,9 +785,116 @@ public extension View {
     func sheetSwipeBack(onBack: (() -> Void)? = nil) -> some View {
         background(SheetSwipeBackEnabler(onBack: onBack))
     }
+
+    /// Explicit left-edge swipe-right-to-POP for a pushed page
+    /// (build 111 — owner, Nov 27, 2026: the edge swipe did
+    /// nothing on the Household & Members subpage even though the
+    /// scaffold attaches `.enableSwipeBack()`). The system
+    /// interactive pop gesture is the owner of this swipe when it
+    /// works; this is only the fallback for when SwiftUI has
+    /// turned it off (hidden nav bar) and the enabler's
+    /// re-enable has not stuck. It never double-pops: the
+    /// handler fires only when the system gesture is currently
+    /// disabled — when it is enabled, the system gesture owns
+    /// the swipe and this one stands down (and a pop that already
+    /// happened leaves nothing to pop). No `require(toFail:)`
+    /// here on purpose: a disabled recogniser never transitions
+    /// to failed, so a failure requirement on the system gesture
+    /// would wait forever in exactly the broken case this
+    /// covers. The delegate refuses when there is nothing to pop
+    /// (stack root, or no nav controller at all — a cover root,
+    /// where the cover's own `.sheetSwipeBack()` owns the edge)
+    /// and when the touch lands inside a UIControl, mirroring
+    /// `SheetSwipeBackEnabler`. A short drag does not pop: the
+    /// swipe must travel 60pt right before release, the same
+    /// "a real swipe" bar as the interactive pop's commit.
+    func popSwipeBack() -> some View {
+        background(PopSwipeBackEnabler())
+    }
 }
 
 // MARK: - Swipe-right-to-dismiss for sheets and full-screen covers
+
+/// Explicit swipe-right-to-pop for a pushed page — the fallback
+/// behind `.popSwipeBack()` (build 111, owner Nov 27, 2026; see
+/// the modifier comment for why it exists and why it does not
+/// use `require(toFail:)`). A plain `UIScreenEdgePanGestureRecognizer`
+/// on the navigation controller's view: it only fires for touches
+/// that START at the screen's left edge, so a slider or other
+/// horizontal control in the middle of the page is never stolen,
+/// and the delegate additionally refuses a touch inside a
+/// UIControl (a slider thumb parked at 0% sits at the left edge).
+public struct PopSwipeBackEnabler: UIViewControllerRepresentable {
+    public init() {}
+
+    public func makeUIViewController(context: Context) -> UIViewController {
+        PopSwipeBackViewController()
+    }
+
+    public func updateUIViewController(_ uiViewController: UIViewController, context: Context) {}
+
+    private final class PopSwipeBackViewController: UIViewController, UIGestureRecognizerDelegate {
+        private var edgePan: UIScreenEdgePanGestureRecognizer?
+
+        override func viewDidAppear(_ animated: Bool) {
+            super.viewDidAppear(animated)
+            attachEdgePan()
+        }
+
+        override func viewDidLayoutSubviews() {
+            super.viewDidLayoutSubviews()
+            attachEdgePan()
+        }
+
+        private func attachEdgePan() {
+            guard edgePan == nil else { return }
+            guard let nav = navigationController else { return }
+            let pan = UIScreenEdgePanGestureRecognizer(target: self, action: #selector(handleEdgePan(_:)))
+            pan.edges = .left
+            pan.delegate = self
+            // Do not cancel touches to the page underneath: this
+            // recogniser only ever acts on an edge swipe, and the
+            // page's own controls keep their touches.
+            pan.cancelsTouchesInView = false
+            nav.view.addGestureRecognizer(pan)
+            edgePan = pan
+        }
+
+        func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
+            guard let nav = navigationController, nav.viewControllers.count > 1 else { return false }
+            // A control under the touch (a slider thumb parked at
+            // the left edge, a full-width button) keeps the touch
+            // — the pop must not steal a drag the user meant for
+            // the control.
+            if let pan = gestureRecognizer as? UIScreenEdgePanGestureRecognizer {
+                let point = pan.location(in: nav.view)
+                if let hit = nav.view.hitTest(point, with: nil) {
+                    var view: UIView? = hit
+                    while let current = view {
+                        if current is UIControl { return false }
+                        view = current.superview
+                    }
+                }
+            }
+            return true
+        }
+
+        @objc private func handleEdgePan(_ gesture: UIScreenEdgePanGestureRecognizer) {
+            guard gesture.state == .ended else { return }
+            guard let nav = navigationController, nav.viewControllers.count > 1 else { return }
+            // The system interactive pop gesture owns the swipe
+            // while it is enabled — stand down and let it pop.
+            // Only when SwiftUI has turned it off (hidden nav bar)
+            // does this fallback pop instead. Never a double pop:
+            // a pop that already happened leaves count at 1 and
+            // the guard above stops this one.
+            if nav.interactivePopGestureRecognizer?.isEnabled == true { return }
+            // A real swipe, not a tap-and-wobble at the edge.
+            guard gesture.translation(in: nav.view).x > 60 else { return }
+            nav.popViewController(animated: true)
+        }
+    }
+}
 
 /// Swipe-right-to-dismiss for a presented sheet or full-screen
 /// cover (build 70, item 2 — owner, Nov 24, 2026): EVERY popup

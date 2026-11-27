@@ -86,6 +86,13 @@ public struct ReviewPageView: View {
             await viewModel.refreshReview()
             reviewReady = true
         }
+        // Build 111 (owner, Nov 27, 2026): explicit
+        // swipe-right-to-pop fallback — the system pop gesture
+        // did nothing on the Settings stack despite
+        // `.enableSwipeBack()` from the shell, so this page does
+        // not rely on it alone either. Fires only when the system
+        // gesture is disabled; never double-pops.
+        .popSwipeBack()
     }
 }
 

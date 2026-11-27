@@ -220,6 +220,24 @@ public struct Transaction: Equatable, Codable, Identifiable, Sendable {
     /// from week math (compute-week contract).
     public var isPendingRefund: Bool { kind == .refund && state == .provisional }
 
+    /// A copy of this row with a different kind — the optimistic
+    /// reclassify in TransactionsViewModel swaps the loaded row's
+    /// kind at once, so the list re-renders with the new kind
+    /// before the server round-trip lands (owner, Nov 27, 2026).
+    /// The memberwise init is module-internal, so the app target
+    /// cannot build the copy itself.
+    public func withKind(_ kind: TransactionKind) -> Transaction {
+        Transaction(
+            id: id, householdId: householdId, date: date, merchant: merchant,
+            amountCents: amountCents, cardSuffix: cardSuffix, source: source,
+            state: state, kind: kind, fundAllocationCents: fundAllocationCents,
+            excluded: excluded, excludeReason: excludeReason, late: late,
+            externalId: externalId, dedupeHash: dedupeHash,
+            originalPurchaseId: originalPurchaseId, preExclusionState: preExclusionState,
+            plaidPendingTransactionId: plaidPendingTransactionId,
+            plaidTransactionId: plaidTransactionId, createdAt: createdAt)
+    }
+
     /// Money-in row (owner, Nov 12, 2026): kind income / refund /
     /// cashback — renders green with a "+" prefix. Kind-based,
     /// not sign-based: a negative charge or transfer still renders

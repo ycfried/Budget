@@ -137,6 +137,12 @@ public final class AppViewModel: ObservableObject {
     /// makes the shell mount/unmount the overlay the moment the
     /// tour starts or ends. Wired in `init` below; retained here.
     private var tourActiveForwarding: AnyCancellable?
+    /// Household rename (owner, Nov 27, 2026): the Members screen
+    /// posts `.householdNameDidChange` (object = the new name)
+    /// after a successful rename — this keeps the shared
+    /// `householdName` (shell top bar, Home, export) in sync
+    /// without a restart.
+    private var householdNameRenameObservation: AnyCancellable?
     /// Whether the walkthrough has been seen for this household
     /// on this device (build 50, Nov 20, 2026 — tutorial
     /// one-time fix): the STABLE per-household, per-device flag
@@ -427,6 +433,15 @@ public final class AppViewModel: ObservableObject {
         tourActiveForwarding = tour.$isActive.sink { [weak self] _ in
             self?.objectWillChange.send()
         }
+        // Household rename (owner, Nov 27, 2026): the rename
+        // runs on the MainActor view model, so this posts on the
+        // main thread and the assignment is main-actor safe.
+        householdNameRenameObservation = NotificationCenter.default
+            .publisher(for: .householdNameDidChange)
+            .compactMap { $0.object as? String }
+            .sink { [weak self] newName in
+                self?.householdName = newName
+            }
     }
 
     public var isAdmin: Bool { role == .admin }

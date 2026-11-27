@@ -139,7 +139,20 @@ public struct AppShellView: View {
         // tooltip land on the real element.
         .coordinateSpace(name: "tourSpace")
         .overlay {
-            if appState.tour.isActive {
+            // Tour fix (Nov 27, 2026 — owner: duplicate tooltip +
+            // misplaced highlight on sheet steps, e.g. step 15
+            // calcSuggestion): this shell overlay renders ONLY
+            // for shell steps (`sheet == nil`). The sheet steps
+            // each render their OWN overlay inside their sheet,
+            // in that sheet's "tourSpace". Without this gate both
+            // rendered at once — and a medium-detent / fitted
+            // sheet leaves the presenting view visible above it,
+            // so the shell overlay's tooltip showed over Home
+            // while the sheet overlay's showed inside the sheet,
+            // and the shell overlay drew the sheet-measured
+            // frame in the shell's coordinate space, landing in
+            // the wrong place/size (the huge empty white box).
+            if appState.tour.isActive, appState.tour.currentStep.sheet == nil {
                 TourOverlayView(
                     tour: appState.tour,
                     appState: appState,

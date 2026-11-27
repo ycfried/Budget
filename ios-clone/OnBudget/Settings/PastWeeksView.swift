@@ -302,6 +302,15 @@ struct PastWeeksView: View {
         // gesture attaches to nothing and the stack's own
         // enableSwipeBack owns the swipe.
         .sheetSwipeBack()
+        // Build 111 (owner, Nov 27, 2026): explicit
+        // swipe-right-to-pop fallback for the pushed case — the
+        // system pop gesture did nothing on the Settings stack
+        // despite `.enableSwipeBack()`, so this page does not
+        // rely on it alone either. Fires only when the system
+        // gesture is disabled; never double-pops. (On the Home
+        // cover there is no nav stack to pop, so it no-ops and
+        // the sheet swipe above owns the edge.)
+        .popSwipeBack()
     }
 
     /// One skeleton metric row shaped like `metricRow` below: a

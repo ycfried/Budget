@@ -392,8 +392,19 @@ struct HistoryDateFilterCard: View {
         .fullScreenCover(isPresented: $showingCalendar, onDismiss: commitCalendarSelection) {
             NavigationStack {
                 DateRangeCalendarView(selection: calendarBinding)
+                    // Nov 27, 2026 (owner — Trash ⓘ clipped on
+                    // iPad): this cover shared the Trash fault — a
+                    // fixed 600pt frame on the NavigationStack
+                    // itself, which squeezes the nav bar on iPad
+                    // (this calendar's own Back button was already
+                    // truncating to "←…" for the same reason) and
+                    // left a thin 600pt column on iPad mini. The
+                    // stack is now full-width and only the content
+                    // is capped, at the standard 900pt tab width
+                    // like the Transactions tab, so the trailing
+                    // Clear sits inside the safe area.
+                    .mainContentWidth(horizontalSizeClass: horizontalSizeClass)
             }
-            .frame(width: horizontalSizeClass == .regular ? 600 : nil)
             // Build 70, item 2 (owner, Nov 24, 2026): swipe-right
             // dismisses the cover, matching the calendar's own
             // top-left Back button. (The calendar cover has no

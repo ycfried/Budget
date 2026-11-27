@@ -1127,6 +1127,21 @@ public final class TransactionsViewModel {
     /// Reclassify ("Other", live.js:3922-3941). Charity is routed to
     /// the guarded mark-as-charity path, never sent to this RPC.
     /// Reason is required.
+    ///
+    /// Optimistic (owner, Nov 27, 2026 — the reclassify button
+    /// lagged): the row's kind updates locally and the success
+    /// toast fires at once, so this returns immediately and the
+    /// caller dismisses the Actions sheet at once. The old
+    /// version awaited the RPC AND the full reload before
+    /// returning, so the button sat disabled for the whole
+    /// round-trip — and the toast fired while the sheet was
+    /// still open, rendering twice (see TransactionsView).
+    /// The RPC + reload run in the background (same shape as
+    /// markAsCharity's background reload, except the toast
+    /// fires before the RPC here because the sheet dismisses
+    /// on return). On failure the local kind reverts, the
+    /// authoritative list reloads, and the existing failure
+    /// path fires (error toast on the main page + alert).
     public func reclassify(_ transaction: Transaction, to kind: TransactionKind, reason: String) async -> Bool {
         guard isAdmin else {
             showAlert(title: "Admin Only", message: "Only the admin can reclassify transactions.")
@@ -1135,17 +1150,36 @@ public final class TransactionsViewModel {
         if kind == .charity {
             return await markAsCharity(transaction)
         }
-        do {
-            try await client.rpcs.reclassifyTransaction(txnId: transaction.id, newKind: kind, reason: reason)
-            confirm("Transaction reclassified.", kind: .success)
-            await reloadAfterMutation()
-            return true
-        } catch let error as OnBudgetError {
-            fail(title: "Could Not Reclassify", message: error.displayMessage)
-            return false
-        } catch {
-            fail(title: "Could Not Reclassify", message: OnBudgetError.displayMessage(for: error))
-            return false
+        let previousKind = transaction.kind
+        applyLocalKind(kind, to: transaction.id)
+        confirm("Transaction reclassified.", kind: .success)
+        Task {
+            do {
+                try await client.rpcs.reclassifyTransaction(txnId: transaction.id, newKind: kind, reason: reason)
+                await reloadAfterMutation()
+            } catch let error as OnBudgetError {
+                applyLocalKind(previousKind, to: transaction.id)
+                fail(title: "Could Not Reclassify", message: error.displayMessage)
+                await reloadAfterMutation()
+            } catch {
+                applyLocalKind(previousKind, to: transaction.id)
+                fail(title: "Could Not Reclassify", message: OnBudgetError.displayMessage(for: error))
+                await reloadAfterMutation()
+            }
+        }
+        return true
+    }
+
+    /// Swap one loaded row's kind in place (optimistic reclassify
+    /// above): the list re-renders with the new kind at once, and
+    /// the background reload replaces it with the server row.
+    /// No-op when the row is not in the loaded page — the reload
+    /// still lands the server state.
+    private func applyLocalKind(_ kind: TransactionKind, to id: UUID) {
+        guard loadedPage.contains(where: { $0.id == id }) else { return }
+        loadedPage = loadedPage.map { $0.id == id ? $0.withKind(kind) : $0 }
+        if case .loaded = loadState {
+            loadState = .loaded(loadedPage)
         }
     }
 

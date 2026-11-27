@@ -175,6 +175,17 @@ public struct TrashView: View {
             }
             .navigationTitle("Trash")
             .navigationBarTitleDisplayMode(.inline)
+            // Nov 27, 2026 (owner — Trash ⓘ clipped on iPad):
+            // the nav bar must be laid out by the system at full
+            // cover width. The old `.frame(width: 600)` on the
+            // NavigationStack itself squeezed the bar on iPad, so
+            // the trailing ⓘ was pushed to — and clipped by — the
+            // screen edge (the same pattern already truncated the
+            // calendar cover's Back button to "←…"). The width cap
+            // now lives on the content only (below), and this stack
+            // stays full-width, so the ⓘ sits inside the safe area
+            // with the standard trailing inset.
+            .mainContentWidth(horizontalSizeClass: horizontalSizeClass)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     BackButton(action: onBack)
@@ -212,10 +223,15 @@ public struct TrashView: View {
                 Text(message)
             }
         }
-        // iPad width (owner, Nov 12, 2026): same treatment as the
-        // Weekly Budget sheet — detent height + 600pt width in the
-        // regular size class; full-width on iPhone (compact).
-        .frame(width: horizontalSizeClass == .regular ? 600 : nil)
+        // iPad width (Nov 27, 2026 — owner: the 600pt column read
+        // as a thin strip on iPad mini): the content now uses the
+        // app's standard tab width — a centred 900pt column on the
+        // regular size class, full-width on iPhone — via
+        // `.mainContentWidth` on the ScrollView above, matching
+        // the Transactions tab. The old fixed 600pt frame sat on
+        // the NavigationStack itself, which also squeezed the nav
+        // bar and clipped the trailing ⓘ; the stack itself is now
+        // full-width and only the content is capped.
         // Build 70, item 2 (owner, Nov 24, 2026): swipe-right
         // dismisses the cover, matching the top-left Back button.
         // (The Trash cover has no SheetHeader, so the gesture does

@@ -1002,6 +1002,26 @@ extension RPCClient {
         ])
     }
 
+    // MARK: - Household rename (owner, Nov 27, 2026)
+    //
+    // `rename_household(p_household_id, p_name)`
+    // (`supabase/rename-household.sql`). OWNER-ONLY — the caller
+    // must be the household's creator (`households.owner_id`),
+    // the same owner check the Members screen uses client-side
+    // for the invite code. `pName` is stored exactly as typed
+    // (trimmed, no Title Case forcing); a blank name is refused
+    // and names are capped at 80 characters, the same cap as
+    // creation. Returns the stored name. A no-op (already that
+    // name) succeeds silently. Degrades gracefully when the
+    // migration is not applied yet: the call fails and the caller
+    // shows a plain-language error.
+    public func renameHousehold(pHouseholdId: UUID, pName: String) async throws -> String {
+        try await callScalar(name: "rename_household", params: [
+            "p_household_id": pHouseholdId.uuidString,
+            "p_name": pName,
+        ])
+    }
+
     // `set_fund_icon(p_household_id, p_fund_key, p_icon)`
     // (`supabase/fund-icons.sql`, build 41 — mirrors set_fund_name).
     // Admin only. `pFundKey` is one of spending / fund / charity /

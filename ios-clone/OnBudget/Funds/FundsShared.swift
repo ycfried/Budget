@@ -839,8 +839,20 @@ public struct FundTransactionRow: View {
         } detail: {
             VStack(alignment: .leading, spacing: 8) {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(MoneyFormat.fmtLong(transaction.date))
-                    Text("\(sourceLabel(transaction.source))\(transaction.cardSuffix == "0000" ? "" : " · Card ••\(transaction.cardSuffix)")")
+                    // Owner, Nov 27, 2026: date and source/card sit
+                    // side by side on ONE line in two columns — date
+                    // in the left column, source · card in the right
+                    // column — instead of stacked, which read
+                    // cramped/claustrophobic. The Spacer keeps clear
+                    // space between them; both stay on one line.
+                    HStack(alignment: .top, spacing: 16) {
+                        Text(MoneyFormat.fmtLong(transaction.date))
+                            .lineLimit(1)
+                        Spacer()
+                        Text("\(sourceLabel(transaction.source))\(transaction.cardSuffix == "0000" ? "" : " · Card ••\(transaction.cardSuffix)")")
+                            .lineLimit(1)
+                            .multilineTextAlignment(.trailing)
+                    }
                     if transaction.state == .provisional {
                         Text("Pending — not posted yet.")
                     } else if transaction.state == .reversed {
