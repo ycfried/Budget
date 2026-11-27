@@ -1,0 +1,86 @@
+name: OnBudget iOS clone tour video (testflight branch)
+# Records the walkthrough TOUR video in an iOS simulator: runs ONLY
+# OnBudgetUITests.testTourVideo while `xcrun simctl io recordVideo`
+# captures the screen, and uploads the recording. The tour
+# auto-shows on first Home entry; the test taps Next through every
+# step so the owner can review every tooltip + highlight for
+# accuracy BEFORE the rebuilt tour ships. Triggered by PUSH to
+# ios-clone-testflight, but ONLY for commits whose message starts
+# "ci(ios-clone): approved cloud tour-video" — that prefix is what
+# keeps the simulator proof workflow (which fires on
+# "ci(ios-clone): approved cloud build") and the how-to video
+# workflow (which fires on "ci(ios-clone): approved cloud video")
+# from running on tour-video commits, and vice versa. The workflow
+# file itself is not on the default branch, so workflow_dispatch
+# cannot find it — the push trigger is the only way to run it. The
+# test creates a pre-confirmed account via the Admin API (no public
+# sign-up, so the 429 sign-up gate cannot block it), signs in, joins
+# the TEST household and steps through the tour. A seed step first
+# inserts the realistic v2 fixtures into the TEST household only —
+# never the live household.
+on:
+  push:
+    branches: [ios-clone-testflight]
+    paths:
+      - 'ios-clone/scripts/seed_video_fixtures.mjs'
+      - 'ios-clone/scripts/macos_tour_video.sh'
+      - 'ios-clone/OnBudgetUITests/OnBudgetUITests.swift'
+      - '.github/workflows/ios-clone-tour-video.yml'
+permissions:
+  contents: read
+concurrency:
+  group: onbudget-ios-clone-tour-video
+  cancel-in-progress: true
+jobs:
+  tour-video:
+    if: >-
+      startsWith(github.event.head_commit.message, 'ci(ios-clone): approved cloud tour-video')
+    runs-on: macos-15-intel
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Write UI-test service key source
+        # Same mechanism as the simulator proof workflow: the UI test
+        # runner cannot inherit the step environment, so the key
+        # travels inside the test bundle. Never printed; the checkout
+        # is runner-ephemeral and never committed.
+        env:
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          if [ -n "$SUPABASE_SERVICE_ROLE_KEY" ]; then
+            escaped_key="${SUPABASE_SERVICE_ROLE_KEY//\\/\\\\}"
+            escaped_key="${escaped_key//\"/\\\"}"
+            {
+              printf '%s\n' '// OnBudget - UITestSecrets.swift (generated in CI; never commit a real key here)'
+              printf '%s\n' '// Service-role key for the UI tests Admin API confirm path,'
+              printf '%s\n' '// written by the video-recordings workflow from the SUPABASE_SERVICE_ROLE_KEY secret.'
+              printf '%s\n' 'enum UITestSecrets {'
+              printf '%s\n' "    static let serviceRoleKey = \"$escaped_key\""
+              printf '%s\n' '}'
+            } > ios-clone/OnBudgetUITests/UITestSecrets.swift
+          fi
+      - name: Seed video v2 fixtures (test household only)
+        env:
+          SUPABASE_URL: https://tnkhvdkmwmwiogiienee.supabase.co
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: node ios-clone/scripts/seed_video_fixtures.mjs
+      - name: Capture tour video recording
+        env:
+          ONBUDGET_APPROVED_WORKFLOW: '1'
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: bash ios-clone/scripts/macos_tour_video.sh
+      - name: Upload tour video recording
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: onbudget-tour-video-recording
+          if-no-files-found: warn
+          retention-days: 14
+          path: |
+            ios-clone/CloudResults/tour-video-recording.mp4
+            ios-clone/CloudResults/record-start-epoch.txt
+            ios-clone/CloudResults/Attachments
+            ios-clone/CloudResults/tour-video.xcresult

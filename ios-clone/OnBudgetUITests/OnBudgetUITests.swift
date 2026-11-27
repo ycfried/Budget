@@ -1083,6 +1083,104 @@ final class OnBudgetUITests: XCTestCase {
         videoMark("DONE")
     }
 
+    /// Tour video (Nov 27, 2026 — accurate-rebuild review): run the
+    /// rebuilt 39-step walkthrough end to end in the simulator while
+    /// `simctl io recordVideo` captures it, so the owner can review
+    /// every tooltip + highlight for accuracy BEFORE it ships live.
+    /// Same sign-in + join preamble as testVideoRecordings (fresh
+    /// account, test household as a member). The tour auto-shows on
+    /// first Home entry; the test taps Next through every step.
+    /// Admin-only steps are skipped for members, so a member sees
+    /// ~31 of 39 — the three page-overview steps (now centred
+    /// tooltips, no spotlight) and all member-visible spotlights are
+    /// covered. Sheets (Weekly, Calculator, Add, Settings) open and
+    /// close as the tour drives them; the test just taps Next and
+    /// waits for each transition. The notification alert is settled
+    /// first so it cannot pop up mid-tour and block a Next tap.
+    /// Run ONLY via the tour-video workflow
+    /// (ios-clone-tour-video.yml / macos_tour_video.sh) — it is not
+    /// part of the simulator proof suite.
+    func testTourVideo() throws {
+        guard let account = createConfirmedTestAccount() else { return }
+        signInWithAccount(email: account.email, password: account.password)
+
+        // Join the test household (videoHouseholdName) as a member (same as testVideoScreens).
+        let inviteField = app.textFields["household.inviteCode"]
+        waitForElement(
+            inviteField, timeout: 90, screenshotName: "tour-household-missing",
+            message: "Household screen did not appear after sign-in (\(diagnosePostSignInState()))"
+        )
+        tapAndTypeText(inviteField, videoHouseholdInviteCode, fieldName: "household.inviteCode")
+        dismissKeyboardIfPresent(focusedField: inviteField)
+        app.buttons["household.joinAsMember"].tap()
+
+        XCTAssertTrue(
+            app.staticTexts[videoHouseholdName].waitForExistence(timeout: 90),
+            "Home did not render after joining the household (no household title)"
+        )
+        // Settle the notification alert BEFORE stepping, so it cannot
+        // pop up mid-tour and block a Next tap (it appears ~11-35 s
+        // after Home loads; once dismissed it never returns for this
+        // install).
+        settleNotificationAlertIfNeeded()
+
+        // Start the tour on demand via Settings → App → Replay
+        // Tutorial. The tour no longer auto-shows on first Home
+        // entry (auto-show default OFF since build 113), so the
+        // test starts it explicitly — the same button a user taps.
+        tapCoordinate(app.buttons["Profile"])
+        let settingsItem = app.buttons["Settings"]
+        XCTAssertTrue(
+            settingsItem.waitForExistence(timeout: 10),
+            "Profile menu did not offer Settings"
+        )
+        tapCoordinate(settingsItem)
+        let appHubRow = app.buttons["settings.hub.app"]
+        XCTAssertTrue(
+            appHubRow.waitForExistence(timeout: 30),
+            "Settings hub did not render (no App row)"
+        )
+        tapCoordinate(appHubRow)
+        let replayButton = app.buttons["settings.replayTutorial"]
+        XCTAssertTrue(
+            replayButton.waitForExistence(timeout: 30),
+            "App settings did not offer Replay Tutorial"
+        )
+        tapCoordinate(replayButton)
+
+        // Replay returns to Home and starts the tour. Wait for its
+        // tooltip (Next button).
+        let nextButton = app.buttons["Next"]
+        XCTAssertTrue(
+            nextButton.waitForExistence(timeout: 60),
+            "Tour tooltip did not appear after Replay Tutorial"
+        )
+        videoMark("TOUR-START")
+
+        // Step through the tour: tap Next (Done on the last step),
+        // wait for the transition (tab switch / sheet open / close),
+        // repeat until the tooltip is gone. Cap at 45 taps so a
+        // stuck tour cannot loop forever. 2.5 s per step is a brisk
+        // but watchable pace — the owner reads each tooltip.
+        var taps = 0
+        while taps < 45 {
+            if app.buttons["Done"].exists {
+                videoMark("TOUR-STEP-DONE")
+                app.buttons["Done"].tap()
+                break
+            }
+            guard app.buttons["Next"].exists else { break }
+            taps += 1
+            videoMark("TOUR-STEP-\(taps)")
+            app.buttons["Next"].tap()
+            Thread.sleep(forTimeInterval: 2.5)
+        }
+        // The tour is over when its tooltip (Next/Done) is gone.
+        XCTAssertFalse(app.buttons["Next"].exists, "Tour tooltip still showing after \(taps) Next taps")
+        XCTAssertFalse(app.buttons["Done"].exists, "Tour Done button still showing")
+        videoMark("TOUR-DONE")
+    }
+
     /// Prints a timestamped marker the assembler uses to cut the
     /// continuous screen recording into scenes. Markers go to the
     /// test log (stdout) as `VIDEO-MARK <name> <epoch seconds>`.

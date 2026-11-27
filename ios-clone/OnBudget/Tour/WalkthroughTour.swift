@@ -371,12 +371,24 @@ public enum TourStep: Int, CaseIterable {
         switch self {
         case .welcome:
             return nil
-        case .homePage, .spendingNumber, .weeklyBudget:
+        // Nov 27, 2026 (accurate-rebuild): the three page-overview
+        // steps have NO spotlight — just a centred tooltip, exactly
+        // like `welcome`. They used to anchor to a single card
+        // (homePage → .spendingHero, transactionsPage →
+        // .transactionsList, fundsPage → .charityCard) while their
+        // lines describe the WHOLE page, so the highlight lit one
+        // card for a whole-page line (owner, Nov 27 — "very
+        // inaccurate", "completely off"), and the Transactions list
+        // frame pulled the bottom tab bar into the highlight. A
+        // page-overview step has no single element to point at,
+        // so there is no cutout — the dim + centred tooltip is
+        // the accurate presentation. The spotlight stays only for
+        // specific-element steps, where the anchor is one element
+        // that can be measured exactly.
+        case .homePage, .transactionsPage, .fundsPage:
+            return nil
+        case .spendingNumber, .weeklyBudget:
             return .spendingHero
-        case .transactionsPage:
-            return .transactionsList
-        case .fundsPage:
-            return .charityCard
         case .connectBank:
             return .bankConnection
         case .connectEmail:
@@ -762,6 +774,21 @@ public struct TourOverlayView: View {
                 guard let value else { return }
                 cardHeight = value.height
                 measuredStepIndex = value.step
+            }
+            // Nov 27, 2026 (accurate-rebuild — "Step N of 39"
+            // cut off at the tooltip's top edge, owner screenshot):
+            // the card is positioned from `cardHeight`, which is
+            // a stored measurement from the PREVIOUS step until a
+            // fresh one lands — if a preference fires with the new
+            // step's tag but the old step's laid-out height, the
+            // readiness gate passes on a stale height and the card
+            // is centred too high, clipping its top row (the step
+            // counter). Reset the measurement on every step change
+            // so the tooltip stays hidden at the 140 estimate until
+            // a fresh measurement for THIS step arrives.
+            .onChange(of: tour.stepIndex) { _ in
+                cardHeight = 140
+                measuredStepIndex = nil
             }
         }
         .ignoresSafeArea()
