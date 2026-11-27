@@ -108,11 +108,11 @@ final class SettingsFormattingTests: XCTestCase {
     func testFormatDetailBasisPointsAndProvisional() {
         XCTAssertEqual(
             AuditFormatting.formatDetail("Default charity rate set to 2000 basis points."),
-            "Charity rate: 20% for future income."
+            "20% · future income only"
         )
         XCTAssertEqual(
             AuditFormatting.formatDetail("Row reclassified as provisional."),
-            "Row reclassified as pending."
+            "Row reclassified as pending"
         )
     }
 
@@ -324,7 +324,7 @@ final class SettingsFormattingTests: XCTestCase {
         )
         XCTAssertEqual(
             AuditFormatting.formatDetail("Re-linked refund 11111111-2222-3333-4444-555555555555 (WALMART -2416 cents) from excluded charge 11111111-2222-3333-4444-555555555555 to live charge 11111111-2222-3333-4444-555555555555 so the refund restores the counted purchase. Note: re-link"),
-            "WALMART -$24.16 · re-linked to live charge"
+            "Re-linked refund (WALMART -$24.16) from excluded charge to live charge so the refund restores the counted purchase. Note: re-link"
         )
         XCTAssertEqual(
             AuditFormatting.formatDetail("Restored MOBILE CHECK DEPOSIT -350000 cents to verified (posted) by owner-approved one-off repair; Plaid removed[] reversal had no snapshot."),
