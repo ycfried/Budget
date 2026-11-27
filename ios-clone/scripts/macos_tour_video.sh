@@ -165,3 +165,4 @@ fi
 exit "$onbudget_test_status"
 # Triggered Nov 27, 2026 — record the rebuilt tour video for owner review.
 # Triggered Nov 27, 2026 — re-record after tooltip visibility fix (ce6caa8).
+# Re-run Nov 27, 2026 — run 46031626393 died on a transient sign-in hang (button stuck on "Signing in..." 90s+, Household screen never appeared); the tooltip fix (ce6caa8) was never exercised.
