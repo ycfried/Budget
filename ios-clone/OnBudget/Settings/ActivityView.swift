@@ -450,7 +450,11 @@ struct ActivityView: View {
     }
 
     private func daySection(_ group: ActivityDayGroup) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
+        // Build 112 (owner, Nov 27, 2026): entries are cards now
+        // (see activityRow), so the gap between them is 12pt —
+        // comfortable, not cramped — instead of the old 8pt that
+        // let the flat rows run together.
+        VStack(alignment: .leading, spacing: 12) {
             Text(group.day == "Unknown date" ? "Unknown date" : OnBudgetKit.MoneyFormat.fmtLong(group.day))
                 .font(.headline)
             ForEach(Array(group.entries.enumerated()), id: \.offset) { _, entry in
@@ -528,7 +532,19 @@ struct ActivityView: View {
         }
     }
 
+    /// Each entry is its own card (owner, Nov 27, 2026): the flat
+    /// rows with only 8pt between them ran together, so the row
+    /// now sits in a `SettingsCard` — the same white card as the
+    /// "Filter by Date" card above (radius 20, hairline border,
+    /// light shadow, 16pt padding). Content is unchanged: icon,
+    /// title, detail lines, timestamp.
     private func activityRow(_ entry: AuditDisplayEntry) -> some View {
+        SettingsCard {
+            activityRowContent(entry)
+        }
+    }
+
+    private func activityRowContent(_ entry: AuditDisplayEntry) -> some View {
         HStack(alignment: .top, spacing: 10) {
             // One small per-type icon, coloured by meaning (owner,
             // Nov 26, 2026): red removals, green positive money

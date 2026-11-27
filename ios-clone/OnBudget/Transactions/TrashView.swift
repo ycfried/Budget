@@ -122,17 +122,19 @@ public struct TrashView: View {
                                         Text(display.text)
                                             .font(.system(size: 16, weight: .semibold))
                                             .foregroundStyle(display.color)
-                                        // The Restore pill is the visual hint for
-                                        // the whole-row action (same look as
-                                        // SmallPrimaryButtonStyle); the row
-                                        // itself is the button.
+                                        // Build 112 (owner, Nov 27, 2026): Restore
+                                        // is a quiet blue TEXT button with no
+                                        // fill — the solid blue pill on every
+                                        // row was loud and repetitive ("super
+                                        // ugly"). Same primary blue text, same
+                                        // position, same action; the padding
+                                        // keeps its tap area generous and the
+                                        // row itself is still the button.
                                         Text("Restore")
                                             .font(.system(size: 14, weight: .semibold))
-                                            .foregroundStyle(.white)
+                                            .foregroundStyle(DesignTokens.primary)
                                             .padding(.vertical, 8)
                                             .padding(.horizontal, 12)
-                                            .background(DesignTokens.primary)
-                                            .clipShape(RoundedRectangle(cornerRadius: 10))
                                     }
                                     .padding(14)
                                     .contentShape(Rectangle())
