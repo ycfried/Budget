@@ -326,9 +326,11 @@ public struct FundsView: View {
         // Build 74 (tour): scroll the current step's target into
         // view on step change — the rate editor and the fund
         // cards can sit below the fold, where the cutout would
-        // point at nothing visible.
+        // point at nothing visible. Settle-aware (Nov 27, 2026 —
+        // highlight fix, second attempt): the scroll re-fires
+        // once the layout above the anchor has settled.
         .onChange(of: appState.tour.stepIndex) { _, _ in
-            scrollTourAnchorIntoView(proxy, tour: appState.tour, tab: .funds)
+            scrollTourAnchorIntoViewAfterSettle(proxy, tour: appState.tour, tab: .funds)
         }
         // The tour's Calculator sheet (Nov 26, 2026 — the tour
         // walks THROUGH the Calculator): `appState.tourSheet`
@@ -703,15 +705,7 @@ public struct FundsView: View {
                     // view model loads them) — the LIVE ones only,
                     // so an expense in the Trash stops counting
                     // at once.
-                    .sheet(isPresented: $showCalculator, onDismiss: {
-                        // The tour's manual-dismiss safety net
-                        // (Nov 26, 2026): the sheet is gone, so
-                        // its frames (in the sheet's coordinate
-                        // space) are stale — clear them so the
-                        // shell overlay shows the tooltip with no
-                        // cutout and Next still advances.
-                        appState.tour.clearFrames(for: [.calcSuggestion, .calcIncome, .calcHousehold, .calcExpenses, .calcCharity])
-                    }) {
+                    .sheet(isPresented: $showCalculator) {
                         WeeklyBudgetCalculatorSheet(
                             householdId: viewModel.context.householdId,
                             charityName: FundSectionID.charity.displayName(customNames: appState.fundNames),
@@ -2540,18 +2534,16 @@ public struct WeeklyBudgetCalculatorSheet: View {
         .presentationDetents([.medium, .large])
         .presentationDragIndicator(.visible)
         // The walkthrough inside the Calculator (Nov 26, 2026):
-        // the sheet's own "tourSpace" (the shell overlay sits
-        // behind the sheet, invisible), gated on the current
-        // step belonging to the Calculator. Attached to the root
+        // the sheet's own overlay (the shell overlay sits behind
+        // the sheet, invisible), gated on the current step
+        // belonging to the Calculator. Attached to the root
         // VStack, so the overlay measures the sheet itself.
-        .coordinateSpace(name: "tourSpace")
-        // Nov 27, 2026 (tour highlight fix): collect the anchors'
-        // preference frames into the tour state (see
-        // tourFrameCollector in WalkthroughTour.swift).
-        .tourFrameCollector(tour: appState.tour)
-        .overlay {
+        // Nov 27, 2026 (highlight fix, second attempt): the
+        // overlay resolves the step's anchor in its own layout
+        // pass (see TourAnchorKey) — no stored frames.
+        .overlayPreferenceValue(TourAnchorKey.self) { anchors in
             if appState.tour.isActive, appState.tour.currentStep.sheet == .calculator {
-                TourOverlayView(tour: appState.tour, appState: appState)
+                TourOverlayView(tour: appState.tour, appState: appState, anchors: anchors)
             }
         }
     }
@@ -2906,7 +2898,7 @@ public struct WeeklyBudgetCalculatorContent: View {
                     // This sheet only; no other ScrollView changes.
                     .scrollIndicators(.hidden)
                     .onChange(of: tour.stepIndex) { _, _ in
-                        scrollTourAnchorIntoView(proxy, tour: tour, tab: .funds)
+                        scrollTourAnchorIntoViewAfterSettle(proxy, tour: tour, tab: .funds)
                     }
                 }
             } else {

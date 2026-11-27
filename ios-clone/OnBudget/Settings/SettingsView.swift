@@ -353,7 +353,7 @@ private struct SettingsSubpageScaffold<Content: View>: View {
                     .padding(.bottom)
                 }
                 .onChange(of: tour.stepIndex) { _, _ in
-                    scrollTourSheetAnchorIntoView(proxy, tour: tour, sheet: .settings)
+                    scrollTourSheetAnchorIntoViewAfterSettle(proxy, tour: tour, sheet: .settings)
                 }
             }
         }

@@ -133,36 +133,29 @@ public struct AppShellView: View {
             .animation(nil, value: appState.selectedTab)
             pageSelectRow
         }
-        // The walkthrough's coordinate space (build 48): every tour
-        // anchor reports its frame in "tourSpace", and the overlay
-        // below draws in the same space, so the cutout and the
-        // tooltip land on the real element.
-        .coordinateSpace(name: "tourSpace")
-        // Nov 27, 2026 (tour highlight fix): collect the anchors'
-        // preference frames into the tour state (see
-        // tourFrameCollector in WalkthroughTour.swift) — the
-        // overlay below reads them from there.
-        .tourFrameCollector(tour: appState.tour)
-        .overlay {
+        // The walkthrough overlay (Nov 27, 2026 — highlight fix,
+        // second attempt): the overlay resolves the current step's
+        // anchor in its own layout pass (see TourAnchorKey in
+        // WalkthroughTour.swift), so the cutout always draws the
+        // anchor's CURRENT rect — no stored frames, no "tourSpace".
+        .overlayPreferenceValue(TourAnchorKey.self) { anchors in
             // Tour fix (Nov 27, 2026 — owner: duplicate tooltip +
             // misplaced highlight on sheet steps, e.g. step 15
             // calcSuggestion): this shell overlay renders ONLY
             // for shell steps (`sheet == nil`). The sheet steps
-            // each render their OWN overlay inside their sheet,
-            // in that sheet's "tourSpace". Without this gate both
-            // rendered at once — and a medium-detent / fitted
-            // sheet leaves the presenting view visible above it,
-            // so the shell overlay's tooltip showed over Home
-            // while the sheet overlay's showed inside the sheet,
-            // and the shell overlay drew the sheet-measured
-            // frame in the shell's coordinate space, landing in
-            // the wrong place/size (the huge empty white box).
+            // each render their OWN overlay inside their sheet.
+            // Without this gate both rendered at once — and a
+            // medium-detent / fitted sheet leaves the presenting
+            // view visible above it, so the shell overlay's
+            // tooltip showed over Home while the sheet overlay's
+            // showed inside the sheet (the huge empty white box).
             if appState.tour.isActive, appState.tour.currentStep.sheet == nil {
                 TourOverlayView(
                     tour: appState.tour,
                     appState: appState,
                     transactionsViewModel: transactionsViewModel,
-                    reviewViewModel: reviewViewModel
+                    reviewViewModel: reviewViewModel,
+                    anchors: anchors
                 )
             }
         }
@@ -180,11 +173,11 @@ public struct AppShellView: View {
         .toastOverlay($appState.toast)
         .fullScreenCover(isPresented: $appState.showSettings, onDismiss: {
             // The tour's manual-dismiss safety net for Settings:
-            // the cover is gone, so the Connections frames (in
-            // the cover's coordinate space) are stale, and the
-            // path resets to the hub for the next manual open.
+            // the cover is gone, so the path resets to the hub for
+            // the next manual open. (Nov 27, 2026 — highlight fix,
+            // second attempt: no stored frames to clear any more —
+            // the anchors leave with the cover.)
             settingsPath = []
-            appState.tour.clearFrames(for: [.bankConnection, .emailAlerts])
         }) {
             settingsCover
         }
@@ -290,19 +283,17 @@ public struct AppShellView: View {
             }
         }
         // The walkthrough inside Settings (Nov 26, 2026 — the
-        // Connect steps): the cover's own "tourSpace" (the shell
+        // Connect steps): the cover's own overlay (the shell
         // overlay sits behind the cover, invisible), gated on
         // the current step belonging to Settings. The anchors
         // live on the Connections subpage, which the tour opens
         // by driving `settingsPath` (see syncSettingsPathForTour).
-        .coordinateSpace(name: "tourSpace")
-        // Nov 27, 2026 (tour highlight fix): collect the anchors'
-        // preference frames into the tour state (see
-        // tourFrameCollector in WalkthroughTour.swift).
-        .tourFrameCollector(tour: appState.tour)
-        .overlay {
+        // Nov 27, 2026 (highlight fix, second attempt): the
+        // overlay resolves the step's anchor in its own layout
+        // pass (see TourAnchorKey) — no stored frames.
+        .overlayPreferenceValue(TourAnchorKey.self) { anchors in
             if appState.tour.isActive, appState.tour.currentStep.sheet == .settings {
-                TourOverlayView(tour: appState.tour, appState: appState)
+                TourOverlayView(tour: appState.tour, appState: appState, anchors: anchors)
             }
         }
         // Build 64 (C-5): the toast attached INSIDE the Settings

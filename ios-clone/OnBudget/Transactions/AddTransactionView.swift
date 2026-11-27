@@ -132,23 +132,21 @@ public struct AddTransactionView: View {
         // (most visible on the two-button options screen).
         .frame(width: horizontalSizeClass == .regular ? 600 : nil)
         // The walkthrough inside the Add cover (Nov 26, 2026):
-        // the cover's own "tourSpace" (the shell overlay sits
-        // behind the cover, invisible), gated on the current
-        // step belonging to the Add cover. Attached to the root
+        // the cover's own overlay (the shell overlay sits behind
+        // the cover, invisible), gated on the current step
+        // belonging to the Add cover. Attached to the root
         // VStack, so the overlay measures the cover itself.
-        .coordinateSpace(name: "tourSpace")
-        // Nov 27, 2026 (tour highlight fix): collect the anchors'
-        // preference frames into the tour state (see
-        // tourFrameCollector in WalkthroughTour.swift).
-        .tourFrameCollector(tour: appState?.tour)
-        .overlay {
+        // Nov 27, 2026 (highlight fix, second attempt): the
+        // overlay resolves the step's anchor in its own layout
+        // pass (see TourAnchorKey) — no stored frames.
+        .overlayPreferenceValue(TourAnchorKey.self) { anchors in
             if let appState, appState.tour.isActive, appState.tour.currentStep.sheet == .add {
                 // The real transactions view model, not nil: the
                 // overlay's Next from the last Add step evaluates
                 // the open-row step, and with nil it would read
                 // "no transactions" and wrongly skip it when rows
                 // exist (see isSkippable).
-                TourOverlayView(tour: appState.tour, appState: appState, transactionsViewModel: viewModel)
+                TourOverlayView(tour: appState.tour, appState: appState, transactionsViewModel: viewModel, anchors: anchors)
             }
         }
     }

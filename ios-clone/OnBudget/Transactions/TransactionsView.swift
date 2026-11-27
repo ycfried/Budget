@@ -224,9 +224,11 @@ public struct TransactionsView: View {
             .padding(.bottom, 60)
         }
         // Build 74 (tour): scroll the current step's target into
-        // view on step change.
+        // view on step change. Settle-aware (Nov 27, 2026 —
+        // highlight fix, second attempt): the scroll re-fires once
+        // the layout above the anchor has settled.
         .onChange(of: appState.tour.stepIndex) { _, _ in
-            scrollTourAnchorIntoView(proxy, tour: appState.tour, tab: .transactions)
+            scrollTourAnchorIntoViewAfterSettle(proxy, tour: appState.tour, tab: .transactions)
         }
         .refreshable {
             await viewModel.load()
@@ -364,15 +366,7 @@ public struct TransactionsView: View {
                 // both steps; the forms are ScrollViews, so they start at
                 // the top, and the options step top-anchors with its own
                 // trailing Spacer (build 43, item 18).
-                .fullScreenCover(isPresented: $showingAdd, onDismiss: {
-                    // The tour's manual-dismiss safety net
-                    // (Nov 26, 2026): the cover is gone, so its
-                    // frames (in the cover's coordinate space) are
-                    // stale — clear them so the shell overlay
-                    // shows the tooltip with no cutout and Next
-                    // still advances.
-                    appState.tour.clearFrames(for: [.addPurchase, .addDonation, .addIncome])
-                }) {
+                .fullScreenCover(isPresented: $showingAdd) {
                     AddTransactionView(viewModel: viewModel, appState: appState, onDismiss: { showingAdd = false })
                         // Build 64 (C-5, follow-up): overlay inside the
                         // cover — the Add save confirmation fires through

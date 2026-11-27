@@ -44,16 +44,18 @@
 // bank & Gmail beyond the Connect steps (explained on the
 // Connect screen), reorder / hide-show (power feature).
 //
-// How it works: each target view reports its frame in the
-// "tourSpace" coordinate space via `.tourAnchor(_:)`; the shell
-// draws a dim overlay with a cutout around the current target, a
-// border, and a tooltip card with the one line + Back / Skip tour
-// / Next (or Done). The tour drives `appState.selectedTab` as it moves between
-// screens, and opens the Charity card / expands the first row where
-// the step needs it. The lines are name-agnostic, so no fund-name
-// substitution is needed — but any line added later must read the
-// household's CURRENT display names from `appState.fundNames`,
-// never hardcode defaults.
+// How it works: each target view reports its bounds as an
+// `Anchor<CGRect>` via `.tourAnchor(_:)` (see TourAnchorKey); the
+// overlay in that container resolves the current step's anchor in
+// its own layout pass and draws a dim overlay with a cutout around
+// the target, a border, and a tooltip card with the one line +
+// Back / Skip tour / Next (or Done). The tour drives
+// `appState.selectedTab` as it moves between screens, and opens
+// the Charity card / expands the first row where the step needs
+// it. The lines are name-agnostic, so no fund-name substitution
+// is needed — but any line added later must read the household's
+// CURRENT display names from `appState.fundNames`, never hardcode
+// defaults.
 //
 // Sheets (Nov 26, 2026 — the tour walks THROUGH them, not just
 // at their entry buttons): a step's `sheet` says which sheet it
@@ -63,17 +65,14 @@
 // sheet only while the tour is active, so manual sheet use is
 // never fought. Each sheet/cover renders its own
 // `TourOverlayView` inside itself, gated on the current step
-// belonging to that sheet, with that sheet's own "tourSpace" —
-// and the SHELL overlay is gated OFF for sheet steps
-// (`currentStep.sheet == nil`, AppShellView): a medium-detent /
-// fitted sheet leaves the presenting view visible above it, so
-// an ungated shell overlay rendered a SECOND tooltip over Home
-// and drew the sheet-measured frame in the shell's coordinate
-// space, in the wrong place/size (owner, Nov 27, 2026 —
-// duplicate tooltip + huge empty highlight box, e.g. step 15).
-// If the user dismisses a tour sheet by hand, the
-// sheet's onDismiss clears that sheet's frames, so the shell
-// overlay shows the tooltip with no cutout and Next still
+// belonging to that sheet — and the SHELL overlay is gated OFF
+// for sheet steps (`currentStep.sheet == nil`, AppShellView): a
+// medium-detent / fitted sheet leaves the presenting view
+// visible above it, so an ungated shell overlay rendered a SECOND
+// tooltip over Home (owner, Nov 27, 2026 — duplicate tooltip +
+// huge empty highlight box, e.g. step 15). If the user dismisses
+// a tour sheet by hand, the anchors leave with the sheet, so the
+// shell overlay shows the tooltip with no cutout and Next still
 // advances — no auto-advance on manual dismiss, by design.
 // The Weekly sheet's overlay lives in `FittedSheetOnIPad`
 // (HomeView), so its GeometryReader measures the sheet viewport,
@@ -86,7 +85,7 @@ import SwiftUI
 import OnBudgetKit
 
 /// The walkthrough's anchor points — the real UI elements the tour
-/// points at. Views report their frames via `.tourAnchor(_:)`.
+/// points at. Views report their bounds as anchors via `.tourAnchor(_:)`.
 public enum TourAnchor: String, CaseIterable {
     /// Home — the Spending hero (the one number).
     case spendingHero
@@ -511,16 +510,24 @@ public enum TourSheet: Equatable {
 
 /// The walkthrough's live state, owned by `AppViewModel` (`appState.tour`)
 /// so Home, Transactions, Funds, the shell and Settings all read the
-/// same tour. Frames are reported by the anchor views; the overlay
-/// reads them. The "seen" flag is per household per device
+/// same tour. The "seen" flag is per household per device
 /// (UserDefaults), so a new family member on their own device gets
 /// the tour once, and a new household gets it once too.
+///
+/// Frames are NOT stored here (Nov 27, 2026 — highlight fix, second
+/// attempt): the overlay resolves the current step's anchor
+/// synchronously in its own layout pass (see TourAnchorKey /
+/// TourOverlayView), so a stored frame can never go stale when
+/// content above the anchor grows or a card expands. The first
+/// attempt (Nov 27, 52acdde) stored frames reported by a preference
+/// and re-collected on every layout pass — but the preference only
+/// re-fired on scroll, never on a layout-driven move, so the overlay
+/// kept drawing the frame from the first measurement (loading /
+/// pre-expansion layout), up to ~85pt above the real target.
 @MainActor
 public final class TourState: ObservableObject {
     @Published public var isActive = false
     @Published public var stepIndex = 0
-    /// Anchor key → frame in the shell's "tourSpace" coordinate space.
-    @Published public var frames: [TourAnchor: CGRect] = [:]
 
     public var steps: [TourStep] { TourStep.allCases }
 
@@ -540,31 +547,6 @@ public final class TourState: ObservableObject {
         stepIndex = 0
     }
 
-    public func setFrame(_ anchor: TourAnchor, _ frame: CGRect) {
-        // Ignore degenerate frames (a view reporting before layout).
-        guard frame.width > 0, frame.height > 0 else { return }
-        if frames[anchor] != frame {
-            frames[anchor] = frame
-        }
-    }
-
-    public func frame(for anchor: TourAnchor) -> CGRect? {
-        frames[anchor]
-    }
-
-    /// Drop the frames for a sheet's anchors (Nov 26, 2026 —
-    /// the manual-dismiss safety net): if the user dismisses a
-    /// tour sheet by hand, its frames are in that sheet's
-    /// coordinate space and must not be read by the shell
-    /// overlay — with them cleared, the shell overlay shows
-    /// the tooltip with no cutout and Next still advances.
-    /// Each sheet's onDismiss clears its own anchors.
-    public func clearFrames(for anchors: [TourAnchor]) {
-        for anchor in anchors {
-            frames.removeValue(forKey: anchor)
-        }
-    }
-
     /// The walkthrough's "seen" flag (build 50, Nov 20, 2026 —
     /// tutorial one-time fix): a STABLE per-household, per-device
     /// key via `TourSeen` (OnBudgetKit). The old key folded in the
@@ -581,17 +563,26 @@ public final class TourState: ObservableObject {
     }
 }
 
-/// Reports a view's frame (in the shell's "tourSpace" coordinate
-/// space) to the tour state, so the overlay can point at it. A nil
-/// anchor is a no-op — the call site stays unconditional and the
-/// anchor is chosen by the section. A nil tour is likewise a no-op
-/// (Nov 26, 2026: sections that only sometimes carry the tour, e.g.
-/// SpendingAllowanceSection, pass nil when they have none).
+/// Tags a view with a walkthrough anchor, so the overlay can point
+/// at it. The anchor is reported as an `Anchor<CGRect>` (see
+/// TourAnchorKey) — NOT as a stored frame: the overlay resolves it
+/// synchronously in its own layout pass (TourOverlayView), so the
+/// cutout always draws the anchor's CURRENT rect, even when content
+/// above it grows (the Weekly sheet's Purchases row, the Charity
+/// card's off-card footnote, the Spending card's Temporary Allowance
+/// note, the Debt card's This Week's Payment row), a card expands,
+/// or the list scrolls. A nil anchor is a no-op — the call site stays
+/// unconditional and the anchor is chosen by the section. A nil tour
+/// is likewise a no-op (Nov 26, 2026: sections that only sometimes
+/// carry the tour, e.g. SpendingAllowanceSection, pass nil when they
+/// have none). The `tour` parameter is kept so the call sites don't
+/// change; the anchor is reported unconditionally and the overlay
+/// only reads it while the tour is active.
 public struct TourAnchorModifier: ViewModifier {
     public let anchor: TourAnchor?
     /// Plain stored reference, NOT @ObservedObject: the modifier
-    /// only WRITES frames (setFrame) and never reads published
-    /// state, and @ObservedObject requires ObservableObject
+    /// only TAGS the view with its anchor and never reads
+    /// published state, and @ObservedObject requires ObservableObject
     /// conformance, which Optional does not have (compile error,
     /// Nov 26, 2026 fix-up).
     public let tour: TourState?
@@ -602,91 +593,29 @@ public struct TourAnchorModifier: ViewModifier {
     }
 
     public func body(content: Content) -> some View {
-        content.background(
-            GeometryReader { proxy in
-                let frame = proxy.frame(in: .named("tourSpace"))
-                Color.clear
-                    // Nov 27, 2026 (tour highlight fix — the
-                    // owner: highlight boxes land in the wrong
-                    // place, e.g. steps 3, 9, 22, 24, 31, 35):
-                    // the frame rides a PREFERENCE now, not only
-                    // the onChange below. A preference is
-                    // re-collected on EVERY layout pass — when a
-                    // sibling above the anchor grows (the Weekly
-                    // sheet's Purchases row, the Charity card's
-                    // off-card footnote, the Spending card's
-                    // Temporary Allowance note, the Debt card's
-                    // This Week's Payment row), when the card
-                    // expands, and when the list scrolls — so the
-                    // overlay always draws the CURRENT frame. The
-                    // onChange below only fired when this
-                    // background's own body re-ran, which a pure
-                    // move (no resize of the anchored view itself)
-                    // does not do — so the overlay kept drawing
-                    // the frame from the first measurement (loading
-                    // / pre-expansion layout), up to ~85pt above
-                    // the real target, and the tooltip placed from
-                    // that stale frame landed on top of the real
-                    // target. The collector (tourFrameCollector,
-                    // on each overlay host) stores the preference
-                    // into the tour state.
-                    .preference(
-                        key: TourAnchorFrameKey.self,
-                        value: anchor.map { [$0: frame] } ?? [:]
-                    )
-                    .onAppear {
-                        if let anchor, let tour {
-                            tour.setFrame(anchor, frame)
-                        }
-                    }
-                    .onChange(of: frame) { _, new in
-                        if let anchor, let tour {
-                            tour.setFrame(anchor, new)
-                        }
-                    }
-            }
-        )
-    }
-}
-
-/// The walkthrough anchors' CURRENT frames, as a preference
-/// (Nov 27, 2026 — highlight fix, see TourAnchorModifier): each
-/// anchor reports its frame in its container's "tourSpace"; the
-/// values merge (one entry per anchor) and the overlay hosts
-/// collect them into the tour state (tourFrameCollector). A
-/// preference is re-collected on every layout pass, so a frame
-/// that moves or grows after its first measurement — async rows
-/// appearing above it, a card expanding, a list scrolling —
-/// reaches the overlay, where the old onChange-only reporting
-/// never re-fired for a pure move.
-private struct TourAnchorFrameKey: PreferenceKey {
-    static var defaultValue: [TourAnchor: CGRect] = [:]
-    static func reduce(value: inout [TourAnchor: CGRect], nextValue: () -> [TourAnchor: CGRect]) {
-        value.merge(nextValue()) { _, new in new }
-    }
-}
-
-/// Collects the anchors' preference frames into the tour state
-/// (Nov 27, 2026 — highlight fix): attached to each container
-/// that renders a TourOverlayView (the shell, the Settings
-/// cover, the Weekly sheet, the Calculator sheet, the Add
-/// cover), so the overlay in that container always draws the
-/// frames measured in THAT container's "tourSpace". A no-op
-/// when there is no tour.
-public struct TourFrameCollectorModifier: ViewModifier {
-    public let tour: TourState?
-
-    public init(tour: TourState?) {
-        self.tour = tour
-    }
-
-    public func body(content: Content) -> some View {
-        content.onPreferenceChange(TourAnchorFrameKey.self) { frames in
-            guard let tour else { return }
-            for (anchor, frame) in frames {
-                tour.setFrame(anchor, frame)
-            }
+        content.anchorPreference(key: TourAnchorKey.self, value: .bounds) { bounds in
+            self.anchor.map { [$0: bounds] } ?? [:]
         }
+    }
+}
+
+/// The walkthrough anchors' CURRENT rects, as anchors (Nov 27, 2026 —
+/// highlight fix, second attempt): each anchor reports its bounds
+/// as an `Anchor<CGRect>` (see TourAnchorModifier); the values merge
+/// (one entry per anchor) and the overlay in that container resolves
+/// them in its own layout pass (TourOverlayView, via
+/// `overlayPreferenceValue`). An anchor is resolved fresh on every
+/// layout pass — when a sibling above the anchor grows, when the card
+/// expands, and when the list scrolls — so the overlay always draws
+/// the CURRENT rect. This replaces the stored-frame mechanism
+/// (TourAnchorFrameKey / tourFrameCollector, Nov 27, 52acdde), whose
+/// preference only re-fired on scroll, never on a layout-driven
+/// move, leaving the overlay drawing the frame from the first
+/// measurement (loading / pre-expansion layout).
+struct TourAnchorKey: PreferenceKey {
+    static var defaultValue: [TourAnchor: Anchor<CGRect>] = [:]
+    static func reduce(value: inout [TourAnchor: Anchor<CGRect>], nextValue: () -> [TourAnchor: Anchor<CGRect>]) {
+        value.merge(nextValue()) { _, new in new }
     }
 }
 
@@ -694,14 +623,6 @@ public extension View {
     /// Attach a walkthrough anchor to a view (no-op when nil).
     func tourAnchor(_ anchor: TourAnchor?, tour: TourState?) -> some View {
         modifier(TourAnchorModifier(anchor: anchor, tour: tour))
-    }
-
-    /// Collect the walkthrough anchors' frames (see
-    /// TourAnchorFrameKey) into the tour state. Attach to the
-    /// container that renders the TourOverlayView for those
-    /// anchors, next to its "tourSpace".
-    func tourFrameCollector(tour: TourState?) -> some View {
-        modifier(TourFrameCollectorModifier(tour: tour))
     }
 }
 
@@ -777,6 +698,15 @@ public struct TourOverlayView: View {
     /// and never evaluate that step (their Next/Back paths
     /// cannot reach it), so nil reads as "nothing to review".
     var reviewViewModel: FundsViewModel?
+    /// The current step's container's anchors, resolved by the
+    /// container via `overlayPreferenceValue(TourAnchorKey.self)`
+    /// (Nov 27, 2026 — highlight fix, second attempt): the overlay
+    /// resolves the current step's anchor from these in its own
+    /// layout pass (see targetFrame), so the cutout always draws
+    /// the anchor's CURRENT rect. Empty when the container has no
+    /// anchors to report — the tooltip then renders with no cutout,
+    /// exactly like a step with no target yet.
+    var anchors: [TourAnchor: Anchor<CGRect>] = [:]
 
     /// The tooltip card's measured height (140 is the estimate
     /// used before the first measurement; the preference below
@@ -795,18 +725,19 @@ public struct TourOverlayView: View {
     /// can misplace it by a few points, never hide it.
     @State private var cardHeight: CGFloat = 140
 
-    public init(tour: TourState, appState: AppViewModel, transactionsViewModel: TransactionsViewModel? = nil, reviewViewModel: FundsViewModel? = nil) {
+    public init(tour: TourState, appState: AppViewModel, transactionsViewModel: TransactionsViewModel? = nil, reviewViewModel: FundsViewModel? = nil, anchors: [TourAnchor: Anchor<CGRect>] = [:]) {
         self.tour = tour
         self.appState = appState
         self.transactionsViewModel = transactionsViewModel
         self.reviewViewModel = reviewViewModel
+        self.anchors = anchors
     }
 
     public var body: some View {
         GeometryReader { proxy in
             let size = proxy.size
             let step = tour.currentStep
-            let target = targetFrame(for: step, containerSize: size)
+            let target = targetFrame(for: step, proxy: proxy)
             let cardTop = cardTopY(containerSize: size, target: target, bottomInset: bottomInset(proxy: proxy))
             // The tooltip + arrow ALWAYS render (Nov 27, 2026 —
             // the old `measuredStepIndex` readiness gate hid them
@@ -902,18 +833,20 @@ public struct TourOverlayView: View {
         proxy.safeAreaInsets.bottom
     }
 
-    /// The current step's target frame: the reported anchor frame.
-    /// Nil for Close (no target) and while a new tab is still
-    /// laying out (the anchor has not reported yet). Build 65: the
-    /// Funds-tab step used to compute the bottom tab bar's Funds
-    /// item from the container geometry — that branch is gone with
-    /// the tab bar; the step now points at the shell's
+    /// The current step's target rect: the anchor resolved
+    /// synchronously in the overlay's own layout pass (Nov 27,
+    /// 2026 — highlight fix, second attempt). The anchor is
+    /// re-resolved on every layout pass, so the cutout always draws
+    /// the anchor's CURRENT rect — never a stored frame from the
+    /// first measurement. Nil for Close (no target) and while a new
+    /// tab is still laying out (the anchor has not reported yet).
+    /// Build 65: the Funds-tab step used to compute the bottom tab
+    /// bar's Funds item from the container geometry — that branch is
+    /// gone with the tab bar; the step now points at the shell's
     /// PageSelectControl via the `.pageSelect` anchor instead.
-    private func targetFrame(for step: TourStep, containerSize: CGSize) -> CGRect? {
-        if let anchor = step.anchor {
-            return tour.frame(for: anchor)
-        }
-        return nil
+    private func targetFrame(for step: TourStep, proxy: GeometryProxy) -> CGRect? {
+        guard let anchor = step.anchor, let resolved = anchors[anchor] else { return nil }
+        return proxy[resolved]
     }
 
     /// The tooltip card's top edge: below the target when it fits
@@ -1231,4 +1164,38 @@ public func scrollTourAnchorIntoView(_ proxy: ScrollViewProxy, tour: TourState, 
 public func scrollTourSheetAnchorIntoView(_ proxy: ScrollViewProxy, tour: TourState, sheet: TourSheet) {
     guard tour.isActive, tour.currentStep.sheet == sheet, let anchor = tour.currentStep.anchor else { return }
     withAnimation(.none) { proxy.scrollTo(anchor, anchor: .center) }
+}
+
+/// The settle-aware version of `scrollTourAnchorIntoView` (Nov 27,
+/// 2026 — highlight fix, second attempt): scrolls now, then scrolls
+/// AGAIN once the layout above the anchor has settled. The first
+/// scroll lands the anchor where the layout stands at the step
+/// change; async content that lands after it (the Weekly sheet's
+/// Purchases row, the Charity card's off-card footnote, the
+/// Calculator's Temporary Allowance block) pushes the anchor down,
+/// so the second scroll — 0.4s later, still inside the step's ~2.5s
+/// dwell — re-centres it. A no-op unless the tour is still on the
+/// same step when the second scroll fires.
+@MainActor
+public func scrollTourAnchorIntoViewAfterSettle(_ proxy: ScrollViewProxy, tour: TourState, tab: AppTab) {
+    scrollTourAnchorIntoView(proxy, tour: tour, tab: tab)
+    let step = tour.stepIndex
+    Task {
+        try? await Task.sleep(nanoseconds: 400_000_000)
+        guard tour.isActive, tour.stepIndex == step else { return }
+        scrollTourAnchorIntoView(proxy, tour: tour, tab: tab)
+    }
+}
+
+/// The sheet version of the settle-aware helper above — the same
+/// re-scroll after the layout settles, gated on the step's sheet.
+@MainActor
+public func scrollTourSheetAnchorIntoViewAfterSettle(_ proxy: ScrollViewProxy, tour: TourState, sheet: TourSheet) {
+    scrollTourSheetAnchorIntoView(proxy, tour: tour, sheet: sheet)
+    let step = tour.stepIndex
+    Task {
+        try? await Task.sleep(nanoseconds: 400_000_000)
+        guard tour.isActive, tour.stepIndex == step else { return }
+        scrollTourSheetAnchorIntoView(proxy, tour: tour, sheet: sheet)
+    }
 }

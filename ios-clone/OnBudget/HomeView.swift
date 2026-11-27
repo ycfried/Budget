@@ -786,6 +786,38 @@ private struct HomeViewportHeightKey: PreferenceKey {
 /// Transactions" button could be pushed off with no way to reach
 /// it. The iPad branch is untouched (a ScrollView would break the
 /// fitted sizing); swipe-right still dismisses on iPhone.
+///
+/// The iPhone Weekly sheet's scrollable content, with its tour
+/// scroll-to (Nov 27, 2026 — highlight fix, second attempt): the
+/// Weekly sheet finally has its own scroll-to — the tab views and
+/// the Calculator sheet have had one since build 74, but this sheet
+/// never did, so a Weekly step's anchor could sit below the fold
+/// (the Calculator row) with nothing to bring it into view. A
+/// separate View — not inline in the modifier below — so it can hold
+/// the tour as an @ObservedObject: the step-change onChange only
+/// fires when something observes `tour.stepIndex`, and a
+/// ViewModifier's plain `appState` does not. Same-sheet step
+/// changes (all five Weekly steps live in the one sheet, so
+/// `tourSheet` never changes) publish nothing anywhere else, so
+/// without this the scroll-to would never fire — the same trap the
+/// Calculator sheet's content already documents (see
+/// WeeklyBudgetCalculatorContent).
+private struct TourWeeklySheetScrollContent<SheetContent: View>: View {
+    @ObservedObject var tour: TourState
+    var sheetContent: () -> SheetContent
+
+    var body: some View {
+        ScrollViewReader { proxy in
+            ScrollView {
+                sheetContent()
+            }
+            .onChange(of: tour.stepIndex) { _, _ in
+                scrollTourAnchorIntoViewAfterSettle(proxy, tour: tour, tab: .home)
+            }
+        }
+    }
+}
+
 private struct FittedSheetOnIPad<SheetContent: View>: ViewModifier {
     @Binding var isPresented: Bool
     var isIPad: Bool
@@ -812,11 +844,15 @@ private struct FittedSheetOnIPad<SheetContent: View>: ViewModifier {
     /// iPhone scroll content: on iPhone the content sits in a
     /// ScrollView, and an overlay inside it would size to the
     /// scrollable content (taller than the screen) instead of
-    /// the visible sheet.
+    /// the visible sheet. Takes the container's anchors (Nov 27,
+    /// 2026 — highlight fix, second attempt): the overlay
+    /// resolves the step's anchor in its own layout pass (see
+    /// TourAnchorKey in WalkthroughTour.swift), so the cutout
+    /// always draws the anchor's CURRENT rect.
     @ViewBuilder
-    private var tourOverlay: some View {
+    private func tourOverlay(anchors: [TourAnchor: Anchor<CGRect>]) -> some View {
         if let appState, appState.tour.isActive, appState.tour.currentStep.sheet == .weekly {
-            TourOverlayView(tour: appState.tour, appState: appState)
+            TourOverlayView(tour: appState.tour, appState: appState, anchors: anchors)
         }
     }
 
@@ -824,28 +860,27 @@ private struct FittedSheetOnIPad<SheetContent: View>: ViewModifier {
         if isIPad {
             content.sheet(isPresented: $isPresented, onDismiss: onDismiss) {
                 sheetContent()
-                    .coordinateSpace(name: "tourSpace")
-                    // Nov 27, 2026 (tour highlight fix): collect
-                    // the anchors' preference frames into the tour
-                    // state (see tourFrameCollector in
-                    // WalkthroughTour.swift).
-                    .tourFrameCollector(tour: appState?.tour)
-                    .overlay { tourOverlay }
+                    .overlayPreferenceValue(TourAnchorKey.self) { anchors in
+                        tourOverlay(anchors: anchors)
+                    }
                     .presentationSizing(.fitted)
                     .presentationBackground(.white)
                     .presentationDragIndicator(.visible)
             }
         } else {
             content.fullScreenCover(isPresented: $isPresented, onDismiss: onDismiss) {
-                ScrollView {
-                    sheetContent()
+                Group {
+                    if let appState {
+                        TourWeeklySheetScrollContent(tour: appState.tour, sheetContent: sheetContent)
+                    } else {
+                        ScrollView {
+                            sheetContent()
+                        }
+                    }
                 }
-                .coordinateSpace(name: "tourSpace")
-                // Nov 27, 2026 (tour highlight fix): collect the
-                // anchors' preference frames into the tour state
-                // (see tourFrameCollector in WalkthroughTour.swift).
-                .tourFrameCollector(tour: appState?.tour)
-                .overlay { tourOverlay }
+                .overlayPreferenceValue(TourAnchorKey.self) { anchors in
+                    tourOverlay(anchors: anchors)
+                }
             }
         }
     }
@@ -981,9 +1016,13 @@ public struct HomeView: View {
         // Build 74 (tour): scroll the current step's target into
         // view on step change — the rate editor and the fund
         // cards can sit below the fold, where the cutout would
-        // point at nothing visible.
+        // point at nothing visible. Settle-aware (Nov 27, 2026 —
+        // highlight fix, second attempt): the scroll re-fires
+        // once the layout above the anchor has settled, so async
+        // rows landing after the step change don't push the
+        // anchor back out of view.
         .onChange(of: appState.tour.stepIndex) { _, _ in
-            scrollTourAnchorIntoView(proxy, tour: appState.tour, tab: .home)
+            scrollTourAnchorIntoViewAfterSettle(proxy, tour: appState.tour, tab: .home)
         }
         .background(DesignTokens.background)
         // Home fit (owner, Nov 26, 2026): measure the viewport
@@ -1048,12 +1087,6 @@ public struct HomeView: View {
         // space at the bottom. iPhone keeps the full-screen
         // cover; see FittedSheetOnIPad above.
         .modifier(FittedSheetOnIPad(isPresented: $showWeeklySheet, isIPad: isIPad, onDismiss: {
-            // The tour's manual-dismiss safety net (Nov 26,
-            // 2026): the sheet is gone, so its frames (in the
-            // sheet's coordinate space) are stale — clear them
-            // so the shell overlay shows the tooltip with no
-            // cutout and Next still advances.
-            appState.tour.clearFrames(for: [.weeklyNumbers, .weeklyAdjust, .weeklySetNew, .weeklyCalcRow])
             // Owner, Nov 26, 2026: the sheet is fully gone now —
             // only then switch tabs. A plain dismiss leaves the
             // pending flag nil, so nothing navigates.
