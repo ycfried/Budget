@@ -169,3 +169,4 @@ exit "$onbudget_test_status"
 # Re-record Nov 27, 2026 — page-grouped tour order + smooth tooltip settle + per-step narration dwell (reorder fe2c64e).
 # Re-record Nov 27, 2026 — highlight-box fix (52acdde): stale anchor frames, tooltip fallback, 10pt cutout padding.
 # Re-record Nov 27, 2026 — highlight-box fix, second attempt (aec4519): anchors resolved in the overlay layout pass, Weekly-sheet scroll-to, settle-aware re-scroll.
+# Re-record Nov 27, 2026 — highlight cutouts on steps 22/35 (c815135): charityRules/debtRule anchors moved onto a VStack — the Group-rooted sections never reported an anchor.
