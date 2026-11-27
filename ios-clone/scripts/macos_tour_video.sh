@@ -167,3 +167,4 @@ exit "$onbudget_test_status"
 # Triggered Nov 27, 2026 — re-record after tooltip visibility fix (ce6caa8).
 # Re-run Nov 27, 2026 — run 46031626393 died on a transient sign-in hang (button stuck on "Signing in..." 90s+, Household screen never appeared); the tooltip fix (ce6caa8) was never exercised.
 # Re-record Nov 27, 2026 — page-grouped tour order + smooth tooltip settle + per-step narration dwell (reorder fe2c64e).
+# Re-record Nov 27, 2026 — highlight-box fix (52acdde): stale anchor frames, tooltip fallback, 10pt cutout padding.
