@@ -1166,13 +1166,18 @@ final class OnBudgetUITests: XCTestCase {
         while taps < 45 {
             if app.buttons["Done"].exists {
                 videoMark("TOUR-STEP-DONE")
-                app.buttons["Done"].tap()
+                // Coordinate tap, not plain .tap(): the tooltip sits
+                // in a non-scrollable overlay, and a plain .tap()
+                // fails with kAXErrorCannotComplete when XCTest tries
+                // to scroll it into view (run 46017844546: the Next
+                // button at y=800 died this way).
+                tapCoordinate(app.buttons["Done"])
                 break
             }
             guard app.buttons["Next"].exists else { break }
             taps += 1
             videoMark("TOUR-STEP-\(taps)")
-            app.buttons["Next"].tap()
+            tapCoordinate(app.buttons["Next"])
             Thread.sleep(forTimeInterval: 2.5)
         }
         // The tour is over when its tooltip (Next/Done) is gone.
