@@ -681,18 +681,20 @@ public struct TourOverlayView: View {
 
     /// The tooltip card's measured height (140 is the estimate
     /// used before the first measurement; the preference below
-    /// reports the real height per step). Nov 26, 2026 (loading
-    /// audit): the card used to render at the 140 estimate on
-    /// first paint and then jump to the measured height — on
-    /// every step whose line wraps differently. The tooltip (and
-    /// its arrow) now stay hidden until the height for the
-    /// CURRENT step is measured (`measuredStepIndex`), so the
-    /// card only ever appears at its final position.
+    /// reports the real height per step). Nov 27, 2026 (tour
+    /// tooltip invisible — run 46023933549): the card used to
+    /// stay HIDDEN until the height for the CURRENT step was
+    /// measured (`measuredStepIndex` + `tooltipReady`), and a
+    /// step-change reset cleared that flag AFTER the preference
+    /// had already fired for the new step — so the flag stayed
+    /// nil, the preference value never changed again, and the
+    /// tooltip never appeared; at opacity 0 its buttons are not
+    /// hittable (UIKit skips alpha < 0.01), so the dim swallowed
+    /// every tap and the tour deadlocked. The gate is gone: the
+    /// tooltip ALWAYS renders (opacity 1) — the measurement now
+    /// only positions the card, so a missed or late measurement
+    /// can misplace it by a few points, never hide it.
     @State private var cardHeight: CGFloat = 140
-    /// The step whose height `cardHeight` was measured for. Nil
-    /// until the first measurement; stale for one frame after a
-    /// step change, while the tooltip stays hidden.
-    @State private var measuredStepIndex: Int? = nil
 
     public init(tour: TourState, appState: AppViewModel, transactionsViewModel: TransactionsViewModel? = nil, reviewViewModel: FundsViewModel? = nil) {
         self.tour = tour
@@ -707,15 +709,13 @@ public struct TourOverlayView: View {
             let step = tour.currentStep
             let target = targetFrame(for: step, containerSize: size)
             let cardTop = cardTopY(containerSize: size, target: target, bottomInset: bottomInset(proxy: proxy))
-            // Nov 26, 2026 (loading audit): the tooltip + arrow
-            // render only once the card height for THIS step is
-            // measured — before that they would sit at the
-            // 140pt estimate's position and jump when the real
-            // height landed. One hidden frame, then the card
-            // appears at its final position; the dim + cutout
-            // (which do not depend on the card height) show at
-            // once, so the overlay never looks empty.
-            let tooltipReady = measuredStepIndex == tour.stepIndex
+            // The tooltip + arrow ALWAYS render (Nov 27, 2026 —
+            // the old `measuredStepIndex` readiness gate hid them
+            // until a measurement landed, and the gate deadlocked:
+            // see `cardHeight` above. The card appears at the 140
+            // estimate's position on the first frame and shifts to
+            // its measured position once the preference lands — a
+            // small one-time shift, far better than invisible).
             // Build 54 (owner, Nov 21, 2026): the tooltip card is
             // capped at 600pt and centred — on iPad the uncapped
             // `size.width - 32` made a ~788pt (portrait) / ~1148pt
@@ -757,38 +757,22 @@ public struct TourOverlayView: View {
                             x: arrowX,
                             y: pointsUp ? cardTop - 5 : cardTop + cardHeight + 5
                         )
-                        .opacity(tooltipReady ? 1 : 0)
                 }
                 tooltipCard(step: step)
                     .frame(width: cardWidth)
                     .position(x: size.width / 2, y: cardTop + cardHeight / 2)
-                    .opacity(tooltipReady ? 1 : 0)
             }
             // The card height, reported per step (see
             // TourCardHeightKey): the step rides along so a
             // step change whose line wraps to the same height
-            // still re-marks the card ready — the height alone
-            // would not fire then, and the tooltip would stay
-            // hidden.
+            // still re-fires the preference and re-asserts the
+            // height. Nov 27, 2026: this ONLY positions the
+            // card now — it no longer gates visibility (see
+            // `cardHeight` above), so a missed or late
+            // measurement can never hide the tooltip.
             .onPreferenceChange(TourCardHeightKey.self) { value in
                 guard let value else { return }
                 cardHeight = value.height
-                measuredStepIndex = value.step
-            }
-            // Nov 27, 2026 (accurate-rebuild — "Step N of 39"
-            // cut off at the tooltip's top edge, owner screenshot):
-            // the card is positioned from `cardHeight`, which is
-            // a stored measurement from the PREVIOUS step until a
-            // fresh one lands — if a preference fires with the new
-            // step's tag but the old step's laid-out height, the
-            // readiness gate passes on a stale height and the card
-            // is centred too high, clipping its top row (the step
-            // counter). Reset the measurement on every step change
-            // so the tooltip stays hidden at the 140 estimate until
-            // a fresh measurement for THIS step arrives.
-            .onChange(of: tour.stepIndex) { _ in
-                cardHeight = 140
-                measuredStepIndex = nil
             }
         }
         .ignoresSafeArea()
