@@ -163,3 +163,4 @@ else
   echo "TOUR VIDEO TEST FAILED (xcodebuild exit $onbudget_test_status)." >echo "VIDEO TEST FAILED (xcodebuild exit $onbudget_test_status)." >&22
 fi
 exit "$onbudget_test_status"
+# Triggered Nov 27, 2026 — record the rebuilt tour video for owner review.
