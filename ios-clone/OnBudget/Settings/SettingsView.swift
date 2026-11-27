@@ -51,7 +51,10 @@ import OnBudgetKit
 
 /// One Settings hub row / subpage. The hub lists these in order;
 /// each pushes its subpage.
-private enum SettingsSubpage: Hashable, CaseIterable {
+/// The Settings hub's subpages (Nov 26, 2026 — internal, not
+/// private: the shell drives the cover's NavigationStack path to
+/// `.connections` for the tour's Connect steps).
+enum SettingsSubpage: Hashable, CaseIterable {
     case profile
     case household
     case connections
@@ -154,24 +157,35 @@ struct SettingsView: View {
     private func settingsSubpage(_ page: SettingsSubpage) -> some View {
         switch page {
         case .profile:
-            SettingsSubpageScaffold(title: page.title, toast: toast) {
+            SettingsSubpageScaffold(title: page.title, toast: toast, tour: appState.tour) {
                 ProfileSettingsView(context: context, toast: toast, hideCardTitle: true)
             }
         case .household:
-            SettingsSubpageScaffold(title: page.title, toast: toast) {
+            SettingsSubpageScaffold(title: page.title, toast: toast, tour: appState.tour) {
                 MembersSettingsView(context: context, toast: toast, hideCardTitle: true)
             }
         case .connections:
-            SettingsSubpageScaffold(title: page.title, toast: toast) {
+            SettingsSubpageScaffold(title: page.title, toast: toast, tour: appState.tour) {
                 ConnectedAccountsView(context: context, toast: toast, plaidLauncher: plaidLauncher)
+                    // Walkthrough anchor (Nov 26, 2026): the Bank
+                    // Connection card — the tour's Connect step
+                    // points here (Plaid). The scaffold carries
+                    // the matching `.id`, so the step scrolls it
+                    // into view when it sits below the fold.
+                    .tourAnchor(.bankConnection, tour: appState.tour)
+                    .id(TourAnchor.bankConnection)
                 EmailAlertsView(context: context, toast: toast)
+                    // Walkthrough anchor (Nov 26, 2026): the Email
+                    // Alerts card — the optional second layer.
+                    .tourAnchor(.emailAlerts, tour: appState.tour)
+                    .id(TourAnchor.emailAlerts)
             }
         case .notifications:
-            SettingsSubpageScaffold(title: page.title, toast: toast) {
+            SettingsSubpageScaffold(title: page.title, toast: toast, tour: appState.tour) {
                 NotificationsSettingsView(context: context, toast: toast, hideCardTitle: true)
             }
         case .app:
-            SettingsSubpageScaffold(title: page.title, toast: toast) {
+            SettingsSubpageScaffold(title: page.title, toast: toast, tour: appState.tour) {
                 ReplayTutorialSettingsCard(appState: appState, onBack: onBack)
                 PrivacyTermsSettingsCard()
             }
@@ -220,26 +234,44 @@ private struct SettingsHubRow: View {
 private struct SettingsSubpageScaffold<Content: View>: View {
     let title: String
     let toast: ToastState
+    /// The walkthrough state (Nov 26, 2026 — the Connections
+    /// steps): the scaffold observes it directly so the
+    /// scroll-to onChange below fires on step change — the
+    /// scaffold holds no @ObservedObject of its own otherwise.
+    /// Every subpage passes `appState.tour`; the scroll-to
+    /// guard only fires for the Settings steps.
+    @ObservedObject var tour: TourState
     @ViewBuilder let content: Content
 
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 20) {
-                HStack {
-                    BackButton { dismiss() }
-                    Spacer()
-                }
-                Text(title)
-                    .font(.largeTitle)
-                    .fontWeight(.bold)
-                    .foregroundStyle(DesignTokens.ink)
+        // Nov 26, 2026 (tour): the ScrollViewReader lets the
+        // tour scroll its current target into view on step
+        // change — the Connections cards can sit below the fold
+        // on a small phone. The sheet-based helper gates on the
+        // step belonging to Settings (the Settings steps have
+        // no tab).
+        ScrollViewReader { proxy in
+            ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
-                    content
+                    HStack {
+                        BackButton { dismiss() }
+                        Spacer()
+                    }
+                    Text(title)
+                        .font(.largeTitle)
+                        .fontWeight(.bold)
+                        .foregroundStyle(DesignTokens.ink)
+                    VStack(alignment: .leading, spacing: 20) {
+                        content
+                    }
                 }
+                .padding()
             }
-            .padding()
+            .onChange(of: tour.stepIndex) { _, _ in
+                scrollTourSheetAnchorIntoView(proxy, tour: tour, sheet: .settings)
+            }
         }
         .overlay(alignment: .top) { TopSafeAreaStrip() }
         .toastOverlay(toast)

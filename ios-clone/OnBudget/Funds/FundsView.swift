@@ -321,6 +321,14 @@ public struct FundsView: View {
         .onChange(of: appState.tour.stepIndex) { _, _ in
             scrollTourAnchorIntoView(proxy, tour: appState.tour, tab: .funds)
         }
+        // The tour's Calculator sheet (Nov 26, 2026 — the tour
+        // walks THROUGH the Calculator): `appState.tourSheet`
+        // drives `showCalculator`, but ONLY while the tour is
+        // active — a manual Calculate tap while the tour is off
+        // never fights this. Same best-effort note as Home's
+        // Weekly-sheet sync (see syncWeeklySheetForTour).
+        .onChange(of: appState.tourSheet) { _, _ in syncCalculatorForTour() }
+        .onChange(of: appState.tour.stepIndex) { _, _ in syncCalculatorForTour() }
         .background(DesignTokens.background)
         // Build 36 (owner, Nov 16, 2026 — iPad): the page reads as
         // a centered 900pt column on the regular size class (see
@@ -686,11 +694,20 @@ public struct FundsView: View {
                     // view model loads them) — the LIVE ones only,
                     // so an expense in the Trash stops counting
                     // at once.
-                    .sheet(isPresented: $showCalculator) {
+                    .sheet(isPresented: $showCalculator, onDismiss: {
+                        // The tour's manual-dismiss safety net
+                        // (Nov 26, 2026): the sheet is gone, so
+                        // its frames (in the sheet's coordinate
+                        // space) are stale — clear them so the
+                        // shell overlay shows the tooltip with no
+                        // cutout and Next still advances.
+                        appState.tour.clearFrames(for: [.calcSuggestion, .calcIncome, .calcHousehold, .calcExpenses, .calcCharity])
+                    }) {
                         WeeklyBudgetCalculatorSheet(
                             householdId: viewModel.context.householdId,
                             charityName: FundSectionID.charity.displayName(customNames: appState.fundNames),
                             viewModel: viewModel,
+                            appState: appState,
                             onClose: { showCalculator = false }
                         )
                     }
@@ -850,6 +867,12 @@ public struct FundsView: View {
                                     )
                                 }
                         }
+                        // Walkthrough anchor (Nov 26, 2026): the
+                        // Savings actions — Add Money + Take Money
+                        // Out. Admin-only, so the step is skipped
+                        // for members (see isSkippable).
+                        .tourAnchor(.savingsActions, tour: appState.tour)
+                        .id(TourAnchor.savingsActions)
                     }
                     Divider()
                     fundActivitySection
@@ -1124,6 +1147,12 @@ public struct FundsView: View {
                     // → Rule → Actions → Activity & Transactions.
                     Divider()
                     DebtRuleSection(viewModel: viewModel, bare: true, fundNames: appState.fundNames)
+                        // Walkthrough anchor (Nov 26, 2026): the
+                        // Debt Repayment Rule — percent / fixed /
+                        // off. Lives inside the expanded Debt card
+                        // (goToStep expands it for this step).
+                        .tourAnchor(.debtRule, tour: appState.tour)
+                        .id(TourAnchor.debtRule)
                     Divider()
                     // Three actions cannot sit side by side on an
                     // iPhone — their labels wrap (owner button
@@ -1169,6 +1198,16 @@ public struct FundsView: View {
                             // grey "Close" button is gone — the card
                             // collapses by tapping its header/chevron.
                         }
+                        // Walkthrough anchor (Nov 26, 2026): the
+                        // Debt actions — Pay from [Fund] + Adjust
+                        // / Clear Debt. Admin-only, so the step is
+                        // skipped for members (see isSkippable).
+                        // The Pay and Clear buttons hide at $0 debt
+                        // (no button that cannot work), so with no
+                        // debt only Adjust Debt remains — and the
+                        // anchor still points at it.
+                        .tourAnchor(.debtActions, tour: appState.tour)
+                        .id(TourAnchor.debtActions)
                     }
                     Divider()
                     debtActivitySection
@@ -1233,6 +1272,14 @@ public struct FundsView: View {
                     .id(TourAnchor.savingsCard)
             case .charity:
                 charityCard
+                    // Walkthrough anchor (Nov 26, 2026): the
+                    // Tzedaka card on the Funds page — the
+                    // fundsPage step points here. The same anchor
+                    // key as Home's Tzedaka card; only one tab is
+                    // in the hierarchy at a time, so the two sites
+                    // never conflict.
+                    .tourAnchor(.charityCard, tour: appState.tour)
+                    .id(TourAnchor.charityCard)
             case .debt:
                 debtCard
                     // Walkthrough anchor (build 48): the Debt card.
@@ -1279,6 +1326,18 @@ public struct FundsView: View {
         } else {
             appState.expandedCard = card
         }
+    }
+
+    /// Open/close the Calculator sheet for the tour (Nov 26,
+    /// 2026): open exactly on the Calculator steps, closed on
+    /// every other step — but only while the tour is active.
+    /// A manual Calculate tap while the tour is off never
+    /// reaches here. (HomeView's Weekly sheet is NOT driven
+    /// from here — the tour's Calculator steps live on the
+    /// Funds tab, and only FundsView's Calculator opens.)
+    private func syncCalculatorForTour() {
+        guard appState.tour.isActive else { return }
+        showCalculator = (appState.tourSheet == .calculator)
     }
 
     // MARK: - Dissolved More sections (§9.2)
@@ -2373,6 +2432,13 @@ public struct WeeklyBudgetCalculatorSheet: View {
     /// so both presenters guarantee a view model before presenting
     /// (HomeView unwraps `ensureFundsViewModel()` in its cover).
     @ObservedObject public var viewModel: FundsViewModel
+    /// The shared app state (Nov 26, 2026 — the tour walks
+    /// THROUGH the Calculator): the in-sheet overlay below and
+    /// the content's scroll-to read `appState.tour` from it.
+    /// Both presenters (FundsView and the Weekly sheet) pass it;
+    /// the overlay gates on the Calculator steps, so it only
+    /// ever shows over the Funds Calculator the tour opens.
+    public var appState: AppViewModel
     public var onClose: () -> Void
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     /// Read (see `calculatorSheetWidth`) so the width recomputes
@@ -2383,10 +2449,11 @@ public struct WeeklyBudgetCalculatorSheet: View {
     /// portrait on a mini and clip again.
     @Environment(\.verticalSizeClass) private var verticalSizeClass
 
-    public init(householdId: UUID, charityName: String, viewModel: FundsViewModel, onClose: @escaping () -> Void = {}) {
+    public init(householdId: UUID, charityName: String, viewModel: FundsViewModel, appState: AppViewModel, onClose: @escaping () -> Void = {}) {
         self.householdId = householdId
         self.charityName = charityName
         self._viewModel = ObservedObject(wrappedValue: viewModel)
+        self.appState = appState
         self.onClose = onClose
     }
 
@@ -2415,7 +2482,7 @@ public struct WeeklyBudgetCalculatorSheet: View {
         // inputs scroll within it.
         VStack(alignment: .leading, spacing: 16) {
             SheetHeader(title: TitleCase.apply(to: "Weekly Allowance Calculator"), onClose: onClose)
-            WeeklyBudgetCalculatorContent(householdId: householdId, charityName: charityName, viewModel: viewModel)
+            WeeklyBudgetCalculatorContent(householdId: householdId, charityName: charityName, viewModel: viewModel, tour: appState.tour)
         }
         .padding()
         .background(DesignTokens.background)
@@ -2435,6 +2502,17 @@ public struct WeeklyBudgetCalculatorSheet: View {
         // popup on iPad.
         .presentationDetents([.medium, .large])
         .presentationDragIndicator(.visible)
+        // The walkthrough inside the Calculator (Nov 26, 2026):
+        // the sheet's own "tourSpace" (the shell overlay sits
+        // behind the sheet, invisible), gated on the current
+        // step belonging to the Calculator. Attached to the root
+        // VStack, so the overlay measures the sheet itself.
+        .coordinateSpace(name: "tourSpace")
+        .overlay {
+            if appState.tour.isActive, appState.tour.currentStep.sheet == .calculator {
+                TourOverlayView(tour: appState.tour, appState: appState)
+            }
+        }
     }
 }
 
@@ -2450,6 +2528,15 @@ public struct WeeklyBudgetCalculatorContent: View {
     /// Expense" option tags through it. Non-optional (see the
     /// Sheet above: `@ObservedObject` cannot wrap an Optional).
     @ObservedObject public var viewModel: FundsViewModel
+    /// The walkthrough state (Nov 26, 2026 — the tour walks
+    /// THROUGH the Calculator): the section anchors report to
+    /// it, and the ScrollViewReader below scrolls the current
+    /// step's section into view. Observed directly — the
+    /// content holds no @ObservedObject of AppViewModel, and
+    /// the step changes publish nothing on the Funds view
+    /// model, so without this the scroll-to onChange would
+    /// never fire on same-sheet step changes.
+    @ObservedObject public var tour: TourState
     /// The expenses the Calculator reads: live from the view
     /// model. (Build 67's `expenses` snapshot parameter is gone —
     /// the view model is the single live source now.)
@@ -2523,10 +2610,11 @@ public struct WeeklyBudgetCalculatorContent: View {
     @State private var didLoad = false
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
-    public init(householdId: UUID, charityName: String, viewModel: FundsViewModel) {
+    public init(householdId: UUID, charityName: String, viewModel: FundsViewModel, tour: TourState) {
         self.householdId = householdId
         self.charityName = charityName
         self._viewModel = ObservedObject(wrappedValue: viewModel)
+        self._tour = ObservedObject(wrappedValue: tour)
         // Loading mandate (owner, Nov 26, 2026): the stored
         // inputs load HERE, synchronously, so the first paint
         // already shows them — the old `load()` in `onAppear`
@@ -2701,51 +2789,85 @@ public struct WeeklyBudgetCalculatorContent: View {
                 // edited inputs further down and could not see
                 // the result update.
                 suggestionBlock
+                    // Walkthrough anchor (Nov 26, 2026): the
+                    // suggestion — the calcSuggestion step and
+                    // the calcApply step both point here. Fixed
+                    // above the ScrollView, so no scroll-to is
+                    // needed for it.
+                    .tourAnchor(.calcSuggestion, tour: tour)
+                    .id(TourAnchor.calcSuggestion)
                 Divider()
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 20) {
-                        // Owner, Nov 26, 2026 (Calculator): Household
-                        // Size + Lifestyle sit at the TOP in ONE card,
-                        // above Expected Income / Recurring Expenses —
-                        // income and expenses come later. Household
-                        // Size above Lifestyle, no separator line
-                        // between them inside the card (the card edge
-                        // is the separator). Order + container only;
-                        // values and behaviour unchanged. (Build 77
-                        // had them as two plain sections with a
-                        // Divider between; the owner then asked for
-                        // one card.)
-                        SettingsCard(title: nil) {
-                            householdSizeSection
-                            lifestyleSection
+                // Nov 26, 2026 (tour): the ScrollViewReader lets
+                // the tour scroll its current section into view
+                // on step change — the sections below can sit
+                // below the fold, where the cutout would point
+                // at nothing visible. Same helper pattern as the
+                // tab views (see scrollTourAnchorIntoView).
+                ScrollViewReader { proxy in
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 20) {
+                            // Owner, Nov 26, 2026 (Calculator): Household
+                            // Size + Lifestyle sit at the TOP in ONE card,
+                            // above Expected Income / Recurring Expenses —
+                            // income and expenses come later. Household
+                            // Size above Lifestyle, no separator line
+                            // between them inside the card (the card edge
+                            // is the separator). Order + container only;
+                            // values and behaviour unchanged. (Build 77
+                            // had them as two plain sections with a
+                            // Divider between; the owner then asked for
+                            // one card.)
+                            SettingsCard(title: nil) {
+                                householdSizeSection
+                                lifestyleSection
+                            }
+                            // Walkthrough anchor (Nov 26, 2026): the
+                            // Household Size + Lifestyle card.
+                            .tourAnchor(.calcHousehold, tour: tour)
+                            .id(TourAnchor.calcHousehold)
+                            Divider()
+                            // Owner, Nov 26, 2026 (Calculator item 2):
+                            // income and expenses read as two separate
+                            // parts — each in its own card (the Settings
+                            // card chrome: white, hairline border), so
+                            // the two lists no longer run together
+                            // separated only by a thin Divider. Content,
+                            // wording, buttons, totals and behaviour are
+                            // unchanged — only the container. The other
+                            // sections stay plain, and no Divider touches
+                            // the cards (the card edge is the separator).
+                            SettingsCard(title: nil) {
+                                incomeSection
+                            }
+                            // Walkthrough anchor (Nov 26, 2026): the
+                            // Expected Income card.
+                            .tourAnchor(.calcIncome, tour: tour)
+                            .id(TourAnchor.calcIncome)
+                            SettingsCard(title: nil) {
+                                chargesSection
+                            }
+                            // Walkthrough anchor (Nov 26, 2026): the
+                            // Recurring Expenses card.
+                            .tourAnchor(.calcExpenses, tour: tour)
+                            .id(TourAnchor.calcExpenses)
+                            Divider()
+                            charitySection
+                                // Walkthrough anchor (Nov 26, 2026):
+                                // the Expected Tzedaka section.
+                                .tourAnchor(.calcCharity, tour: tour)
+                                .id(TourAnchor.calcCharity)
                         }
-                        Divider()
-                        // Owner, Nov 26, 2026 (Calculator item 2):
-                        // income and expenses read as two separate
-                        // parts — each in its own card (the Settings
-                        // card chrome: white, hairline border), so
-                        // the two lists no longer run together
-                        // separated only by a thin Divider. Content,
-                        // wording, buttons, totals and behaviour are
-                        // unchanged — only the container. The other
-                        // sections stay plain, and no Divider touches
-                        // the cards (the card edge is the separator).
-                        SettingsCard(title: nil) {
-                            incomeSection
-                        }
-                        SettingsCard(title: nil) {
-                            chargesSection
-                        }
-                        Divider()
-                        charitySection
+                    }
+                    // Owner, Nov 26, 2026 (Calculator item 1): the
+                    // grey scroll bar is gone — it sat floating
+                    // mid-sheet (the sheet is narrower than the
+                    // screen) instead of at the screen's right edge.
+                    // This sheet only; no other ScrollView changes.
+                    .scrollIndicators(.hidden)
+                    .onChange(of: tour.stepIndex) { _, _ in
+                        scrollTourAnchorIntoView(proxy, tour: tour, tab: .funds)
                     }
                 }
-                // Owner, Nov 26, 2026 (Calculator item 1): the
-                // grey scroll bar is gone — it sat floating
-                // mid-sheet (the sheet is narrower than the
-                // screen) instead of at the screen's right edge.
-                // This sheet only; no other ScrollView changes.
-                .scrollIndicators(.hidden)
             } else {
                 // Loading: the suggestion skeleton stays fixed on
                 // top (mirroring the fixed suggestion) and the

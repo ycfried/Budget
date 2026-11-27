@@ -93,6 +93,14 @@ public struct AppShellView: View {
     /// transactions…" line). Owned here so the toast survives the
     /// pop back to the list.
     @StateObject private var historyToast = ToastState()
+    /// The Settings cover's navigation path (Nov 26, 2026 —
+    /// the tour walks through Settings > Connections): the
+    /// tour drives it to `[.connections]` for the Connect
+    /// steps and back to `[]` (the hub) otherwise — see
+    /// `syncSettingsPathForTour`. Manual Settings use never
+    /// touches it (the sync guards on the tour being active),
+    /// and the cover's onDismiss resets it.
+    @State private var settingsPath: [SettingsSubpage] = []
 
     /// iPad content width (build 36): the shell's page-select row
     /// reads as part of the centred 900pt column on the regular
@@ -135,7 +143,8 @@ public struct AppShellView: View {
                 TourOverlayView(
                     tour: appState.tour,
                     appState: appState,
-                    transactionsViewModel: transactionsViewModel
+                    transactionsViewModel: transactionsViewModel,
+                    reviewViewModel: reviewViewModel
                 )
             }
         }
@@ -151,9 +160,24 @@ public struct AppShellView: View {
         // the top toast is the one confirmation style, owner
         // Nov 24, 2026.)
         .toastOverlay($appState.toast)
-        .fullScreenCover(isPresented: $appState.showSettings) {
+        .fullScreenCover(isPresented: $appState.showSettings, onDismiss: {
+            // The tour's manual-dismiss safety net for Settings:
+            // the cover is gone, so the Connections frames (in
+            // the cover's coordinate space) are stale, and the
+            // path resets to the hub for the next manual open.
+            settingsPath = []
+            appState.tour.clearFrames(for: [.bankConnection, .emailAlerts])
+        }) {
             settingsCover
         }
+        // The tour's Settings path (Nov 26, 2026 — the Connect
+        // steps live on the Connections subpage, not the hub):
+        // drive the cover to Connections for the settings steps
+        // and back to the hub otherwise. Best-effort on the step
+        // change too — the tourSheet change is the one that
+        // always fires (it is a @Published on AppViewModel).
+        .onChange(of: appState.tourSheet) { _, _ in syncSettingsPathForTour() }
+        .onChange(of: appState.tour.stepIndex) { _, _ in syncSettingsPathForTour() }
         // Root toasts clear on tab change (audit X-P2-13): a toast
         // fired on one tab must not linger over the next screen
         // for the rest of its 4s. The history toast is a separate
@@ -228,7 +252,7 @@ public struct AppShellView: View {
     /// tab). The tab underneath is left alone so dismissing Settings
     /// returns to where the user was.
     private var settingsCover: some View {
-        NavigationStack {
+        NavigationStack(path: $settingsPath) {
             if let context = settingsContext() {
                 SettingsView(
                     context: context,
@@ -245,6 +269,18 @@ public struct AppShellView: View {
                 .enableSwipeBack()
             } else {
                 LoadingView()
+            }
+        }
+        // The walkthrough inside Settings (Nov 26, 2026 — the
+        // Connect steps): the cover's own "tourSpace" (the shell
+        // overlay sits behind the cover, invisible), gated on
+        // the current step belonging to Settings. The anchors
+        // live on the Connections subpage, which the tour opens
+        // by driving `settingsPath` (see syncSettingsPathForTour).
+        .coordinateSpace(name: "tourSpace")
+        .overlay {
+            if appState.tour.isActive, appState.tour.currentStep.sheet == .settings {
+                TourOverlayView(tour: appState.tour, appState: appState)
             }
         }
         // Build 64 (C-5): the toast attached INSIDE the Settings
@@ -298,8 +334,10 @@ public struct AppShellView: View {
     /// PageSelectControl) and sits in the middle of the row, not
     /// left-aligned — the Lean look was nicer. Inside the same
     /// centred 900pt iPad column as the tab content below (see
-    /// `mainContentWidth`). The Funds-tab walkthrough step
-    /// points at it (`.pageSelect` tour anchor).
+    /// `mainContentWidth`). It still carries the `.pageSelect`
+    /// tour anchor (no step points at it since the v3 tour —
+    /// section 1 points at each page's own content instead —
+    /// but the anchor stays for any future step that needs it).
     private var pageSelectRow: some View {
         HStack {
             Spacer()
@@ -549,6 +587,20 @@ public struct AppShellView: View {
     private func popTransactionsSubpage() {
         guard !transactionsPath.isEmpty else { return }
         transactionsPath.removeLast()
+    }
+
+    /// Drive the Settings cover's path for the tour (Nov 26,
+    /// 2026): the Connect steps (Bank, Email) live on the
+    /// Connections subpage, not the hub, so the tour opens the
+    /// cover straight onto it and returns to the hub when the
+    /// tour leaves the Settings steps. Tour-only — when the
+    /// tour is off, manual navigation is untouched.
+    private func syncSettingsPathForTour() {
+        guard appState.tour.isActive else { return }
+        let target: [SettingsSubpage] = appState.tour.currentStep.sheet == .settings ? [.connections] : []
+        if settingsPath != target {
+            settingsPath = target
+        }
     }
 
     @ViewBuilder

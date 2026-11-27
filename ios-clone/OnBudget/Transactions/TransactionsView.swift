@@ -169,6 +169,14 @@ public struct TransactionsView: View {
             .onChange(of: viewModel.trashTransactions.isEmpty) { _, _ in refreshMenuSnapshotIfClosed() }
             .onChange(of: reviewViewModel.reviewCount) { _, _ in refreshMenuSnapshotIfClosed() }
             .onChange(of: viewModel.isSyncing) { _, _ in refreshMenuSnapshotIfClosed() }
+            // The tour's Add cover (Nov 26, 2026 — the tour
+            // walks THROUGH the Add options): `appState.tourSheet`
+            // drives `showingAdd`, but ONLY while the tour is
+            // active — a manual + Add tap while the tour is off
+            // never fights this. Same best-effort note as Home's
+            // Weekly-sheet sync (see syncWeeklySheetForTour).
+            .onChange(of: appState.tourSheet) { _, _ in syncAddCoverForTour() }
+            .onChange(of: appState.tour.stepIndex) { _, _ in syncAddCoverForTour() }
             .modifier(TransactionCovers(
                 viewModel: viewModel,
                 appState: appState,
@@ -223,6 +231,15 @@ public struct TransactionsView: View {
         // mainContentWidth), never stretched edge-to-edge.
         .mainContentWidth(horizontalSizeClass: horizontalSizeClass)
         }
+    }
+
+    /// Open/close the Add cover for the tour (Nov 26, 2026):
+    /// open exactly on the Add-cover steps, closed on every
+    /// other step — but only while the tour is active. A manual
+    /// + Add tap while the tour is off never reaches here.
+    private func syncAddCoverForTour() {
+        guard appState.tour.isActive else { return }
+        showingAdd = (appState.tourSheet == .add)
     }
 
     /// The on-appear work (build 64): extracted from `body`'s `.task`
@@ -333,8 +350,16 @@ public struct TransactionsView: View {
                 // both steps; the forms are ScrollViews, so they start at
                 // the top, and the options step top-anchors with its own
                 // trailing Spacer (build 43, item 18).
-                .fullScreenCover(isPresented: $showingAdd) {
-                    AddTransactionView(viewModel: viewModel, onDismiss: { showingAdd = false })
+                .fullScreenCover(isPresented: $showingAdd, onDismiss: {
+                    // The tour's manual-dismiss safety net
+                    // (Nov 26, 2026): the cover is gone, so its
+                    // frames (in the cover's coordinate space) are
+                    // stale — clear them so the shell overlay
+                    // shows the tooltip with no cutout and Next
+                    // still advances.
+                    appState.tour.clearFrames(for: [.addPurchase, .addDonation, .addIncome])
+                }) {
+                    AddTransactionView(viewModel: viewModel, appState: appState, onDismiss: { showingAdd = false })
                         // Build 64 (C-5, follow-up): overlay inside the
                         // cover — the Add save confirmation fires through
                         // the view model into the app-shell toast
@@ -591,10 +616,25 @@ public struct TransactionsView: View {
                 Text("⋯")
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundStyle(DesignTokens.ink)
+                    // Walkthrough anchor (Nov 26, 2026): the
+                    // Merchants row lives inside this menu
+                    // (admin-only) — the anchor sits on the label
+                    // so it can carry its own `.id` for scroll-to
+                    // (one view holds one `.id`; the Export step
+                    // below holds the menu button's).
+                    .tourAnchor(.merchantsChip, tour: appState.tour)
+                    .id(TourAnchor.merchantsChip)
             }
             .buttonStyle(SmallGreyOutlineButtonStyle())
             .accessibilityLabel("More")
             .accessibilityIdentifier("header.more")
+            // Walkthrough anchor (Nov 26, 2026): the ⋯ menu
+            // button — Export lives INSIDE this menu (there is
+            // no standalone Export button), so the tour points
+            // at the menu and says so. The header sits at the
+            // top of the page, so scroll-to is a formality.
+            .tourAnchor(.exportButton, tour: appState.tour)
+            .id(TourAnchor.exportButton)
         }
     }
 
@@ -782,6 +822,11 @@ public struct TransactionsView: View {
             }
             .buttonStyle(.plain)
             .accessibilityIdentifier("transactions.needsReviewBanner")
+            // Walkthrough anchor (Nov 26, 2026): the Needs
+            // Review banner — the step is skipped when there is
+            // nothing to review (see isSkippable).
+            .tourAnchor(.needsReviewBanner, tour: appState.tour)
+            .id(TourAnchor.needsReviewBanner)
         }
     }
 

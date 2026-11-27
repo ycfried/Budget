@@ -798,12 +798,34 @@ private struct FittedSheetOnIPad<SheetContent: View>: ViewModifier {
     /// plain dismiss (swipe / X) leaves the pending flag nil, so
     /// nothing navigates. Nil by default.
     var onDismiss: (() -> Void)? = nil
+    /// The walkthrough state (Nov 26, 2026 — the tour walks
+    /// THROUGH the Weekly sheet): the in-sheet overlay below
+    /// needs it. Nil keeps the old behaviour for sheets the
+    /// tour never enters.
+    var appState: AppViewModel? = nil
     @ViewBuilder var sheetContent: () -> SheetContent
+
+    /// The in-sheet tour overlay (Nov 26, 2026): rendered only
+    /// while the tour is on a Weekly-sheet step. Attached here
+    /// — in the modifier, not inside the sheet content — so the
+    /// GeometryReader measures the SHEET VIEWPORT, not the
+    /// iPhone scroll content: on iPhone the content sits in a
+    /// ScrollView, and an overlay inside it would size to the
+    /// scrollable content (taller than the screen) instead of
+    /// the visible sheet.
+    @ViewBuilder
+    private var tourOverlay: some View {
+        if let appState, appState.tour.isActive, appState.tour.currentStep.sheet == .weekly {
+            TourOverlayView(tour: appState.tour, appState: appState)
+        }
+    }
 
     func body(content: Content) -> some View {
         if isIPad {
             content.sheet(isPresented: $isPresented, onDismiss: onDismiss) {
                 sheetContent()
+                    .coordinateSpace(name: "tourSpace")
+                    .overlay { tourOverlay }
                     .presentationSizing(.fitted)
                     .presentationBackground(.white)
                     .presentationDragIndicator(.visible)
@@ -813,6 +835,8 @@ private struct FittedSheetOnIPad<SheetContent: View>: ViewModifier {
                 ScrollView {
                     sheetContent()
                 }
+                .coordinateSpace(name: "tourSpace")
+                .overlay { tourOverlay }
             }
         }
     }
@@ -998,6 +1022,16 @@ public struct HomeView: View {
         .onChange(of: viewModel.week.isLoaded) { _, isLoaded in
             if isLoaded { maybeStartTour() }
         }
+        // The tour's Weekly sheet (Nov 26, 2026 — the tour
+        // walks THROUGH the sheet): `appState.tourSheet`
+        // drives `showWeeklySheet`, but ONLY while the tour is
+        // active — a manual card tap while the tour is off
+        // never fights this. The step change is best-effort
+        // (it fires when the view re-renders); the tourSheet
+        // change is the one that always fires, because it is a
+        // @Published on AppViewModel.
+        .onChange(of: appState.tourSheet) { _, _ in syncWeeklySheetForTour() }
+        .onChange(of: appState.tour.stepIndex) { _, _ in syncWeeklySheetForTour() }
         // Build 43 (owner, Nov 17, 2026 — item 17): full-screen
         // cover, not a detent sheet — popups are always full size.
         // Build 68 (item 9): on iPad this is a COMPACT FITTED
@@ -1005,6 +1039,12 @@ public struct HomeView: View {
         // space at the bottom. iPhone keeps the full-screen
         // cover; see FittedSheetOnIPad above.
         .modifier(FittedSheetOnIPad(isPresented: $showWeeklySheet, isIPad: isIPad, onDismiss: {
+            // The tour's manual-dismiss safety net (Nov 26,
+            // 2026): the sheet is gone, so its frames (in the
+            // sheet's coordinate space) are stale — clear them
+            // so the shell overlay shows the tooltip with no
+            // cutout and Next still advances.
+            appState.tour.clearFrames(for: [.weeklyNumbers, .weeklyAdjust, .weeklySetNew, .weeklyCalcRow])
             // Owner, Nov 26, 2026: the sheet is fully gone now —
             // only then switch tabs. A plain dismiss leaves the
             // pending flag nil, so nothing navigates.
@@ -1012,7 +1052,7 @@ public struct HomeView: View {
                 appState.pendingSheetShowTransactions = nil
                 appState.showTransactionsForWeek(weekStart)
             }
-        }) {
+        }, appState: appState) {
             if case .loaded(let result) = viewModel.week {
                 WeeklySheet(week: result, baseAllowanceCents: viewModel.allowanceCents, purchasesThisWeek: viewModel.purchasesThisWeek, appState: appState, onChanged: { Task { await viewModel.refresh() } })
                     // iPad width (owner, Nov 12 2026): WeeklySheet
@@ -1037,7 +1077,7 @@ public struct HomeView: View {
                 appState.pendingSheetShowTransactions = nil
                 appState.showTzedakaTransactions()
             }
-        }) {
+        }, appState: appState) {
             if case .loaded(let summary) = viewModel.charity,
                case .loaded(let result) = viewModel.week {
                 TzedakaSheet(summary: summary, appState: appState, onChanged: { Task { await viewModel.refresh() } })
@@ -1162,6 +1202,20 @@ public struct HomeView: View {
             guard appState.selectedTab == .home else { return }
             tour.start()
         }
+    }
+
+    /// Open/close the Weekly sheet for the tour (Nov 26, 2026):
+    /// open exactly on the Weekly-sheet steps, closed on every
+    /// other step — but only while the tour is active. A manual
+    /// card tap or swipe while the tour is off never reaches
+    /// here, so the user's own sheet use is untouched. If the
+    /// user swiped the sheet away mid-tour, the next step
+    /// change re-opens it when the step still belongs to the
+    /// sheet (the cleared-frame fallback covers the step the
+    /// swipe landed on).
+    private func syncWeeklySheetForTour() {
+        guard appState.tour.isActive else { return }
+        showWeeklySheet = (appState.tourSheet == .weekly)
     }
 
     /// The simpler Home (build 46 — owner, Nov 18, 2026: the
@@ -3405,6 +3459,12 @@ public struct WeeklySheet: View {
                     .stroke(Color(hex: "#e5e7eb"), lineWidth: 1)
             )
             .fundCardShadow()
+            // Walkthrough anchors (Nov 26, 2026): the numbers
+            // card — the weeklyNumbers step and the weekClose
+            // step both point here. The sheet fits without
+            // scrolling, so no scroll-to is needed.
+            .tourAnchor(.weeklyNumbers, tour: appState.tour)
+            .id(TourAnchor.weeklyNumbers)
             // Build 65 (owner, Nov 23, 2026 — item 4): the sheet
             // used to end at the numbers with dead space below —
             // the week actions live here now, as tappable ROWS in
@@ -3517,6 +3577,7 @@ public struct WeeklySheet: View {
                     householdId: householdId,
                     charityName: FundSectionID.charity.displayName(customNames: appState.fundNames),
                     viewModel: fundsViewModel,
+                    appState: appState,
                     onClose: { showCalculator = false }
                 )
             }
@@ -3555,6 +3616,11 @@ public struct WeeklySheet: View {
                         appState.openSpendingFund()
                     }
                 }
+                // Walkthrough anchor (Nov 26, 2026): the Adjust
+                // row — admin-only, so the step is skipped for
+                // members (see isSkippable).
+                .tourAnchor(.weeklyAdjust, tour: appState.tour)
+                .id(TourAnchor.weeklyAdjust)
                 // Owner, Nov 26, 2026: "Set New Allowance" — the
                 // direct way to set the ongoing/base weekly
                 // allowance going forward (permanent, not a
@@ -3575,6 +3641,10 @@ public struct WeeklySheet: View {
                         appState.openSpendingFund()
                     }
                 }
+                // Walkthrough anchor (Nov 26, 2026): the Set New
+                // Allowance row — admin-only, like Adjust above.
+                .tourAnchor(.weeklySetNew, tour: appState.tour)
+                .id(TourAnchor.weeklySetNew)
             }
             if appState.isAdmin && appState.householdId != nil {
                 SheetActionDivider()
@@ -3596,6 +3666,11 @@ public struct WeeklySheet: View {
                 ) {
                     showCalculator = true
                 }
+                // Walkthrough anchor (Nov 26, 2026): the
+                // Calculator row — the step that leads into the
+                // Funds Calculator section.
+                .tourAnchor(.weeklyCalcRow, tour: appState.tour)
+                .id(TourAnchor.weeklyCalcRow)
             }
         }
         .background(Color.white)

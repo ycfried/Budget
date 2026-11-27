@@ -1,54 +1,80 @@
 // STAGE — In-app walkthrough (build 48, owner Nov 19, 2026;
 // refreshed Nov 26, 2026 — owner: "update walkthrough for new
 // users to be perfect and up to date with sizing, pages, pop ups,
-// style etc.").
+// style etc."; expanded Nov 26, 2026 — owner: a THOROUGH tour
+// that actually USES the allowance and the Calculator, in the
+// owner's own order: the 3 main pages first, then connecting the
+// bank (Plaid, email optional), then the allowance, then Tzedaka,
+// then everything else — with a full debt section and the Savings
+// system explained as saving toward something specific, not a
+// general savings account).
 //
 // The first-run guided tour: one element at a time, arrows pointing,
-// one short plain line each. 14 steps, ~2 minutes — long enough
+// one short plain line each. 39 steps, ~5 minutes — long enough
 // that nobody is lost, short enough that nobody loses patience.
 // Shows once on first entry to Home after sign-up AND the
 // household is set (invite-only — join-by-code),
 // skippable at any point, re-playable from Settings ("Replay Tutorial").
 //
-// The v2 plan (owner-delegated priorities, Nov 19, 2026 — the full
-// list is the general ideal, not a checklist), refreshed Nov 26,
-// 2026 to the CURRENT pages, popups and flows:
-//   1. Home — the one number (Spending), the star.
-//   2. Home — tap the Spending card: the Weekly Budget sheet
-//      (the week's numbers + the Calculator that works them out).
-//   3. Home — Tzedaka card, tap to open (10% automatic).
-//   4. Page switch — Home / Transactions / Funds.
-//   5. Funds — Tzedaka rules: change the rate (0% pauses giving).
-//   6. Funds — Tzedaka actions: Add to Tzedaka / Record a
-//      Donation (admin-only step — skipped for members, who
-//      never see those buttons).
-//   7. Funds — the Spending card's Calculate button: the Weekly
-//      Budget Calculator (income, Lifestyle holdback, recurring
-//      expenses, Suggested Weekly Budget).
-//   8. + Add — Purchase / Donation / Record Income.
-//   9. Transactions — the list.
-//   10. Transactions — open a row (see it, change it if it's wrong).
-//   11. Transactions — search and filters.
-//   12. Funds — Savings card (your cushion).
-//   13. Funds — Debt card (pay it down).
-//   14. Close — "That's the app — you're set."
+// The v3 plan (owner's order, Nov 26, 2026):
+//   Welcome — the core idea: the app suggests, from your own
+//     rules, what to spend, what to put aside, and what to give —
+//     and tracks it all in one place.
+//   Section 1 — the 3 main pages: Home, Transactions, Funds.
+//   Section 2 — connect: the bank through Plaid (Settings >
+//     Connections), email alerts as an optional second layer.
+//   Section 3 — the allowance: the Weekly Allowance sheet (the
+//     week's numbers, the week close, Adjust / Set New) and the
+//     Calculator (income, household + lifestyle, recurring
+//     expenses, giving rate, the suggestion — which never applies
+//     itself; Set New Allowance is how a suggestion is used).
+//   Section 4 — Tzedaka: 10% of what comes in, the Available
+//     figure on the card, the rate, the actions.
+//   Section 5 — everything else: + Add (purchase / donation /
+//     record income), open a row (and tag a charge as a recurring
+//     expense from its Actions), search + filters, Needs Review,
+//     Export, merchant names + rules, Savings (saving toward
+//     something specific, or covering a week that goes over),
+//     Debt (what carried debt is, the weekly payment rule, paying
+//     it down / clearing it).
+//   Close — "That's the app — you're set."
 // Cut (recorded in the plan file): sign-up / household / rules /
 // members (onboarding guides those), profile & settings
-// (discoverable), bank & Gmail (explained on the Connect screen),
-// reorder / hide-show (power feature), charity deep-dive steps
-// (folded into + Add and the open card), savings/debt full detail
-// (one step each — the pattern is the same).
+// (discoverable — except Connections, which the tour opens),
+// bank & Gmail beyond the Connect steps (explained on the
+// Connect screen), reorder / hide-show (power feature).
 //
-// How it works: each target view reports its frame in the shell's
+// How it works: each target view reports its frame in the
 // "tourSpace" coordinate space via `.tourAnchor(_:)`; the shell
 // draws a dim overlay with a cutout around the current target, a
 // border, and a tooltip card with the one line + Back / Skip tour
 // / Next (or Done). The tour drives `appState.selectedTab` as it moves between
 // screens, and opens the Charity card / expands the first row where
-// the step needs it. The v2 lines are name-agnostic, so no fund-name
+// the step needs it. The lines are name-agnostic, so no fund-name
 // substitution is needed — but any line added later must read the
 // household's CURRENT display names from `appState.fundNames`,
 // never hardcode defaults.
+//
+// Sheets (Nov 26, 2026 — the tour walks THROUGH them, not just
+// at their entry buttons): a step's `sheet` says which sheet it
+// lives in (nil for shell steps). `goToStep` drives
+// `appState.tourSheet` (and `showSettings` for the Settings
+// steps); each presenting view observes it and opens/closes its
+// sheet only while the tour is active, so manual sheet use is
+// never fought. Each sheet/cover renders its own
+// `TourOverlayView` inside itself, gated on the current step
+// belonging to that sheet, with that sheet's own "tourSpace" —
+// the shell overlay sits behind the sheet, invisible and
+// harmless. If the user dismisses a tour sheet by hand, the
+// sheet's onDismiss clears that sheet's frames, so the shell
+// overlay shows the tooltip with no cutout and Next still
+// advances — no auto-advance on manual dismiss, by design.
+// The Weekly sheet's overlay lives in `FittedSheetOnIPad`
+// (HomeView), so its GeometryReader measures the sheet viewport,
+// not the iPhone scroll content; the Calculator's lives on
+// `WeeklyBudgetCalculatorSheet`'s root; the Add cover's on
+// `AddTransactionView`'s root; the Settings one on the shell's
+// settingsCover NavigationStack.
 
 import SwiftUI
 import OnBudgetKit
@@ -92,82 +118,243 @@ public enum TourAnchor: String, CaseIterable {
     /// points at it; it used to point at the bottom tab bar's
     /// Funds item, which no longer exists (no TabView).
     case pageSelect
+    /// Weekly sheet — the numbers card (Allowance / Base /
+    /// Spent / Balance / debt rows). Shared by the weekClose
+    /// step, which talks about the same numbers.
+    case weeklyNumbers
+    /// Weekly sheet — the "Adjust This Week's Allowance" row.
+    /// Admin-only: the row does not exist for members.
+    case weeklyAdjust
+    /// Weekly sheet — the "Set New Allowance" row. Admin-only.
+    case weeklySetNew
+    /// Weekly sheet — the "Weekly Allowance Calculator" row.
+    case weeklyCalcRow
+    /// Calculator — the fixed suggestion block at the top
+    /// ("Suggested Weekly Allowance"). Shared by the calcApply
+    /// step, which talks about the same suggestion.
+    case calcSuggestion
+    /// Calculator — the Expected Income card.
+    case calcIncome
+    /// Calculator — the Household Size + Lifestyle card (one
+    /// card holding both).
+    case calcHousehold
+    /// Calculator — the Recurring Expenses card.
+    case calcExpenses
+    /// Calculator — the Expected Tzedaka (giving rate) section.
+    case calcCharity
+    /// Add cover — the Purchase option button.
+    case addPurchase
+    /// Add cover — the Donation option button. Admin-only.
+    case addDonation
+    /// Add cover — the Record Income option button. Admin-only.
+    case addIncome
+    /// Funds — the expanded Savings card's Add / Take actions
+    /// ("Add Money" + "Take Money Out"). Admin-only: the row
+    /// does not exist for members.
+    case savingsActions
+    /// Funds — the expanded Debt card's Pay / Clear actions
+    /// ("Pay from [Fund]" + Adjust / Clear Debt). Admin-only.
+    case debtActions
+    /// Funds — the Debt Repayment Rule section inside the
+    /// expanded Debt card (percent / fixed / off).
+    case debtRule
+    /// Settings > Connections — the Bank Connection card
+    /// (Plaid). Lives on the Connections subpage, which the
+    /// tour opens by driving the shell's Settings path.
+    case bankConnection
+    /// Settings > Connections — the Email Alerts card (Gmail).
+    /// Same subpage as the bank card.
+    case emailAlerts
+    /// Transactions — the Needs Review banner (admin-only, only
+    /// rendered when review items exist).
+    case needsReviewBanner
+    /// Transactions — the ⋯ "More" menu button in the header.
+    /// Export lives INSIDE that menu (there is no standalone
+    /// Export button — the old pills row is gone), so the tour
+    /// points at the menu and says so.
+    case exportButton
+    /// Transactions — the ⋯ "More" menu button, again: the
+    /// Merchants row lives inside the same menu (admin-only),
+    /// so it shares the one visible entry point with Export.
+    /// The anchor frame is the menu label's, so the two steps
+    /// can each carry their own `.id` for scroll-to.
+    case merchantsChip
 }
 
-/// One step of the walkthrough (v2 plan, 14 steps — refreshed
-/// Nov 26, 2026 to the current pages, popups and flows). The `line`
-/// is the one short plain line the tooltip shows; `tab` is the
-/// screen the step lives on; `anchor` is the element the arrow
-/// points at (nil only for Close, which has no target; the
-/// page-switch step points at the shell's PageSelectControl via
-/// `.pageSelect`; the Weekly Budget step reuses `.spendingHero` —
-/// the sheet itself opens from that card, and sheets present above
-/// the tour overlay, so the tour points at the entry point rather
-/// than opening the sheet).
+/// One step of the walkthrough (v3 plan, 39 steps — the owner's
+/// order, Nov 26, 2026). The `line` is the one short plain line
+/// the tooltip shows; `tab` is the screen the step lives on (nil
+/// for the Settings steps, which present over the current tab);
+/// `anchor` is the element the arrow points at (nil only for
+/// Welcome and Close, which have no target); `sheet` is the sheet
+/// the step lives in (nil for shell steps — the overlay drives
+/// `appState.tourSheet` from it, and `showSettings` for the
+/// Settings steps).
+///
+/// The through-line (owner, Nov 26, 2026 — the CORE IDEA): the
+/// app suggests, from the user's OWN rules, what to spend each
+/// week, what to put aside, and what to give — and tracks it all
+/// in one place. The Welcome step opens with it, the Close step
+/// closes with it, and the three strands run through the tour:
+/// the allowance steps are the "what to spend" suggestion, the
+/// Savings steps are the "what to put aside" suggestion, the
+/// Tzedaka steps are the "what to give" suggestion.
 public enum TourStep: Int, CaseIterable {
+    // Section 1 — the 3 main pages.
+    case welcome
+    case homePage
+    case transactionsPage
+    case fundsPage
+    // Section 2 — connect (Settings > Connections).
+    case connectBank
+    case connectEmail
+    // Section 3 — the allowance (Weekly sheet + Calculator).
     case spendingNumber
     case weeklyBudget
+    case weeklyNumbers
+    case weekClose
+    case weeklyAdjust
+    case weeklySetNew
+    case weeklyCalculatorRow
+    case calculator
+    case calcSuggestion
+    case calcIncome
+    case calcHousehold
+    case calcExpenses
+    case calcCharity
+    case calcApply
+    // Section 4 — Tzedaka.
     case charityCard
-    case fundsTab
     case charityRules
     case charityActions
-    case calculator
+    // Section 5 — everything else.
     case addButton
-    case transactionsList
+    case addPurchase
+    case addDonation
+    case addIncome
     case openRow
     case searchFilters
+    case needsReview
+    case export
+    case merchantRules
     case savingsCard
+    case savingsActions
     case debtCard
+    case debtIdea
+    case debtRule
+    case debtActions
     case close
 
     public var line: String {
         switch self {
+        case .welcome:
+            return "This app suggests, from your own rules, what to spend each week, what to put aside, and what to give — and tracks it all in one place."
+        case .homePage:
+            return "This is Home — your week at a glance: what's left to spend, and what's set aside for giving."
+        case .transactionsPage:
+            return "This is Transactions — everything in and out, all in one place."
+        case .fundsPage:
+            return "This is Funds — your giving, your cushion, and your debt."
+        case .connectBank:
+            return "Connect your bank here — your purchases show up automatically."
+        case .connectEmail:
+            return "Email is optional — connect it too and your purchases show up faster and more completely."
         case .spendingNumber:
             return "This is what you have left to spend this week."
         case .weeklyBudget:
             return "Tap this card to open the Weekly Allowance — the week's numbers, and the Calculator that works them out."
+        case .weeklyNumbers:
+            return "Here's the week broken down — what you started with, what you spent, and what's left."
+        case .weekClose:
+            return "When the week ends, what's left pays your debt first, then goes to surplus."
+        case .weeklyAdjust:
+            return "Need more or less just this week? Change this week only — next week goes back to normal."
+        case .weeklySetNew:
+            return "This changes your allowance every week going forward."
+        case .weeklyCalculatorRow:
+            return "Not sure what your allowance should be? The Calculator works it out from your income and regular expenses."
         case .charityCard:
-            return "This is set aside for giving — 10% of what comes in, automatically."
-        case .fundsTab:
-            return "Switch pages here — Home, Transactions, or Funds."
+            return "This is set aside for giving — 10% of what comes in. The number here is what's available to give."
         case .charityRules:
-            return "You can change the rate — set it to 0% to pause giving."
+            return "You set the rate — that's your rule. Set it to 0% to pause giving."
         case .charityActions:
             return "Add money to giving here — or record a donation you gave off the card."
         case .calculator:
             return "Tap Calculate to work out the weekly allowance from your income and regular expenses."
+        case .calcSuggestion:
+            return "This is the suggestion — from your own rules: your income, your giving rate, and your regular expenses."
+        case .calcIncome:
+            return "Put in what your household expects to earn each month."
+        case .calcHousehold:
+            return "How many people it covers, and how much to hold back for a comfortable life."
+        case .calcExpenses:
+            return "Your regular monthly costs — rent, bills, subscriptions. They come off before the suggestion."
+        case .calcCharity:
+            return "The giving rate used in the maths — change it here and the suggestion updates."
+        case .calcApply:
+            return "The Calculator only suggests — it never changes your allowance. To use this number, set it as your new allowance."
         case .addButton:
             // Nov 26, 2026: + Add opens the options popup
             // (Purchase / Donation / Record Income — members see
             // Purchase only), it no longer adds a purchase
             // directly, so the line stays role-neutral.
             return "Tap here to add something new."
-        case .transactionsList:
-            // Nov 26, 2026: the list holds income and gifts as
-            // well as spending — "everything you spent" was wrong.
-            return "Everything in and out, all in one place."
+        case .addPurchase:
+            return "Add a purchase by hand — what you bought, and how much."
+        case .addDonation:
+            return "Record a gift you gave off the card."
+        case .addIncome:
+            return "Record money that came in — a paycheque, anything. Income sets aside charity automatically."
         case .openRow:
-            return "Tap any row to see it — and change it if it's wrong."
+            // Tag-as-Expense lives only behind the row's Actions
+            // sheet (TransactionActionsSheet), never in the row
+            // itself — so there is no tagExpense step; the idea
+            // is folded into this line instead.
+            return "Tap any row to see it — and change it if it's wrong, or tag it as a recurring expense."
         case .searchFilters:
             return "Find anything fast."
+        case .needsReview:
+            return "If something needs a look — a possible duplicate, a charge to check — it shows up here. Tap it to sort it out."
+        case .export:
+            // Export lives inside the ⋯ menu (there is no
+            // standalone Export button), so the step points at
+            // the menu and says so.
+            return "Export lives in this menu — send your transactions out as a file, for your records or your accountant."
+        case .merchantRules:
+            // Merchant Names lives inside the same ⋯ menu
+            // (admin-only), so this step points at the menu too.
+            return "Merchant names live in this menu too — rename one here, and it applies to every matching row, not just one."
         case .savingsCard:
-            return "Your cushion — add to it, or take from it."
+            // Owner, Nov 26, 2026 — the Savings system is NOT a
+            // general savings account: it is saving toward a
+            // SPECIFIC purchase, or covering a week that goes
+            // over. The line says so, never "cushion".
+            return "This is for saving toward something specific — a purchase — or to cover a week that goes over."
+        case .savingsActions:
+            return "Add to it while you're saving toward something — take from it when a week goes over."
         case .debtCard:
             return "Your debt — pay it down here."
+        case .debtIdea:
+            return "Carried debt is what you still owe when a week costs more than your allowance."
+        case .debtRule:
+            return "A part of each week's allowance pays it down before you spend it — a %, a fixed amount, or off."
+        case .debtActions:
+            return "Pay it down from your cushion, or clear part of it here."
         case .close:
-            return "That's the app — you're set."
+            return "That's the app — your rules suggest what to spend, put aside, and give, and it's all tracked here."
         }
     }
 
     public var tab: AppTab? {
         switch self {
-        case .spendingNumber, .weeklyBudget, .charityCard, .fundsTab:
+        case .welcome, .homePage, .spendingNumber, .weeklyBudget, .weeklyNumbers, .weekClose, .weeklyAdjust, .weeklySetNew, .weeklyCalculatorRow, .charityCard:
             return .home
-        case .charityRules, .charityActions, .calculator:
-            return .funds
-        case .addButton, .transactionsList, .openRow, .searchFilters:
+        case .connectBank, .connectEmail:
+            // Settings presents over the current tab — no switch.
+            return nil
+        case .transactionsPage, .addButton, .addPurchase, .addDonation, .addIncome, .openRow, .searchFilters, .needsReview, .export, .merchantRules:
             return .transactions
-        case .savingsCard, .debtCard:
+        case .fundsPage, .calculator, .calcSuggestion, .calcIncome, .calcHousehold, .calcExpenses, .calcCharity, .calcApply, .charityRules, .charityActions, .savingsCard, .savingsActions, .debtCard, .debtIdea, .debtRule, .debtActions:
             return .funds
         case .close:
             return .home
@@ -176,34 +363,115 @@ public enum TourStep: Int, CaseIterable {
 
     public var anchor: TourAnchor? {
         switch self {
-        case .spendingNumber, .weeklyBudget:
+        case .welcome:
+            return nil
+        case .homePage, .spendingNumber, .weeklyBudget:
             return .spendingHero
+        case .transactionsPage:
+            return .transactionsList
+        case .fundsPage:
+            return .charityCard
+        case .connectBank:
+            return .bankConnection
+        case .connectEmail:
+            return .emailAlerts
+        case .weeklyNumbers, .weekClose:
+            return .weeklyNumbers
+        case .weeklyAdjust:
+            return .weeklyAdjust
+        case .weeklySetNew:
+            return .weeklySetNew
+        case .weeklyCalculatorRow:
+            return .weeklyCalcRow
+        case .calculator:
+            return .calculatorButton
+        case .calcSuggestion, .calcApply:
+            return .calcSuggestion
+        case .calcIncome:
+            return .calcIncome
+        case .calcHousehold:
+            return .calcHousehold
+        case .calcExpenses:
+            return .calcExpenses
+        case .calcCharity:
+            return .calcCharity
         case .charityCard:
             return .charityCard
-        case .fundsTab:
-            return .pageSelect
         case .charityRules:
             return .charityRules
         case .charityActions:
             return .charityActions
-        case .calculator:
-            return .calculatorButton
         case .addButton:
             return .addButton
-        case .transactionsList:
-            return .transactionsList
+        case .addPurchase:
+            return .addPurchase
+        case .addDonation:
+            return .addDonation
+        case .addIncome:
+            return .addIncome
         case .openRow:
             return .firstRow
         case .searchFilters:
             return .searchBar
-        case .close:
-            return nil
+        case .needsReview:
+            return .needsReviewBanner
+        case .export:
+            return .exportButton
+        case .merchantRules:
+            return .merchantsChip
         case .savingsCard:
             return .savingsCard
-        case .debtCard:
+        case .savingsActions:
+            return .savingsActions
+        case .debtCard, .debtIdea:
             return .debtCard
+        case .debtRule:
+            return .debtRule
+        case .debtActions:
+            return .debtActions
+        case .close:
+            return nil
         }
     }
+
+    /// The sheet this step lives in, if any — the tour drives
+    /// `appState.tourSheet` from it on every step change (and
+    /// `showSettings` for `.settings`), so the tour walks
+    /// THROUGH the Weekly sheet, the Calculator, the Add cover
+    /// and Settings, instead of only pointing at their entry
+    /// buttons. Nil for shell steps.
+    public var sheet: TourSheet? {
+        switch self {
+        case .weeklyNumbers, .weekClose, .weeklyAdjust, .weeklySetNew, .weeklyCalculatorRow:
+            return .weekly
+        case .calcSuggestion, .calcIncome, .calcHousehold, .calcExpenses, .calcCharity, .calcApply:
+            return .calculator
+        case .addPurchase, .addDonation, .addIncome:
+            return .add
+        case .connectBank, .connectEmail:
+            return .settings
+        default:
+            return nil
+        }
+    }
+}
+
+/// Which sheet a tour step lives in (Nov 26, 2026 — the tour
+/// walks through sheets, not just at them). `goToStep` drives
+/// `appState.tourSheet` from `TourStep.sheet` on every step
+/// change; each presenting view observes it and opens/closes its
+/// sheet only while the tour is active. `.settings` is driven
+/// the same way via `appState.showSettings` (the Settings cover
+/// is shell-owned, not a per-view sheet).
+public enum TourSheet: Equatable {
+    /// The Weekly Allowance sheet (Home).
+    case weekly
+    /// The Weekly Allowance Calculator sheet (Funds).
+    case calculator
+    /// The + Add full-screen cover (Transactions).
+    case add
+    /// The Settings full-screen cover (shell).
+    case settings
 }
 
 /// The walkthrough's live state, owned by `AppViewModel` (`appState.tour`)
@@ -247,6 +515,19 @@ public final class TourState: ObservableObject {
 
     public func frame(for anchor: TourAnchor) -> CGRect? {
         frames[anchor]
+    }
+
+    /// Drop the frames for a sheet's anchors (Nov 26, 2026 —
+    /// the manual-dismiss safety net): if the user dismisses a
+    /// tour sheet by hand, its frames are in that sheet's
+    /// coordinate space and must not be read by the shell
+    /// overlay — with them cleared, the shell overlay shows
+    /// the tooltip with no cutout and Next still advances.
+    /// Each sheet's onDismiss clears its own anchors.
+    public func clearFrames(for anchors: [TourAnchor]) {
+        for anchor in anchors {
+            frames.removeValue(forKey: anchor)
+        }
     }
 
     /// The walkthrough's "seen" flag (build 50, Nov 20, 2026 —
@@ -372,6 +653,13 @@ public struct TourOverlayView: View {
     @ObservedObject var tour: TourState
     @ObservedObject var appState: AppViewModel
     var transactionsViewModel: TransactionsViewModel?
+    /// The shell-owned Review view model (FundsViewModel):
+    /// the Needs Review step is skippable when there is
+    /// nothing to review (`reviewCount == 0`). Only the shell
+    /// overlay carries it — the in-sheet overlays pass nil
+    /// and never evaluate that step (their Next/Back paths
+    /// cannot reach it), so nil reads as "nothing to review".
+    var reviewViewModel: FundsViewModel?
 
     /// The tooltip card's measured height (140 is the estimate
     /// used before the first measurement; the preference below
@@ -388,10 +676,11 @@ public struct TourOverlayView: View {
     /// step change, while the tooltip stays hidden.
     @State private var measuredStepIndex: Int? = nil
 
-    public init(tour: TourState, appState: AppViewModel, transactionsViewModel: TransactionsViewModel? = nil) {
+    public init(tour: TourState, appState: AppViewModel, transactionsViewModel: TransactionsViewModel? = nil, reviewViewModel: FundsViewModel? = nil) {
         self.tour = tour
         self.appState = appState
         self.transactionsViewModel = transactionsViewModel
+        self.reviewViewModel = reviewViewModel
     }
 
     public var body: some View {
@@ -603,25 +892,36 @@ public struct TourOverlayView: View {
     /// Whether a step has nothing to point at for this user, so
     /// the tour steps over it (forward in `goToStep`, backward in
     /// `back()` — the two must agree, or Back lands on a step that
-    /// immediately skips forward again). Nov 26, 2026: the
-    /// open-row step (no transactions yet) and the Tzedaka-actions
-    /// step (members never see the Add to Tzedaka / Record a
-    /// Donation buttons — admin-only) are the skippable ones.
+    /// immediately skips forward again). Admin-only steps (the
+    /// Weekly sheet's Adjust / Set New rows, the Add cover's
+    /// Donation / Record Income options, the Tzedaka actions,
+    /// the Savings / Debt action rows, the Merchants row) are
+    /// skipped for members, who never see those buttons. The
+    /// open-row step is skipped with no transactions, and the
+    /// Needs Review step when there is nothing to review
+    /// (admin-only banner, only rendered when review items
+    /// exist — `reviewCount == 0` also covers the count not
+    /// having loaded yet).
     private func isSkippable(_ step: TourStep) -> Bool {
         switch step {
         case .openRow:
             return transactionsViewModel?.shownTransactions.first == nil
-        case .charityActions:
+        case .charityActions, .weeklyAdjust, .weeklySetNew, .addDonation, .addIncome, .savingsActions, .debtActions, .merchantRules:
             return !appState.isAdmin
+        case .needsReview:
+            guard appState.isAdmin else { return true }
+            return (reviewViewModel?.reviewCount ?? 0) == 0
         default:
             return false
         }
     }
 
     /// Move to a step: switch to its tab (keeping the Charity card
-    /// open across the switch into the rules step), run the step's
-    /// action (open the Charity card, expand the first row), and
-    /// collapse the first row again when leaving its step.
+    /// open across the switch into the rules step), drive the
+    /// step's sheet (`tourSheet`, plus `showSettings` for the
+    /// Settings steps), run the step's action (open the Charity
+    /// card, expand the first row), and collapse the first row
+    /// again when leaving its step.
     private func goToStep(_ index: Int) {
         // Skip steps with nothing to point at — a brand-new
         // household with zero rows has no first row, and a member
@@ -639,6 +939,14 @@ public struct TourOverlayView: View {
             return
         }
         tour.stepIndex = index
+        // Sheets (Nov 26, 2026): the presenting views observe
+        // `tourSheet` and open/close only while the tour is
+        // active — setting it here on EVERY step change is what
+        // walks the tour through the Weekly sheet, the
+        // Calculator, the Add cover and Settings. The Settings
+        // cover is shell-owned, so it rides `showSettings`.
+        appState.tourSheet = step.sheet
+        appState.showSettings = (step.sheet == .settings)
         if let tab = step.tab, appState.selectedTab != tab {
             if step == .charityRules || step == .charityActions || step == .calculator {
                 // Keep the fund card open across this switch —
@@ -655,6 +963,15 @@ public struct TourOverlayView: View {
             // detail — the card must be open for the anchor to
             // report a frame.
             appState.expandedCard = .spending
+        case .savingsActions:
+            // The Add / Take actions live in the expanded
+            // Savings card — the card must be open for the
+            // anchor to report a frame.
+            appState.expandedCard = .fund
+        case .debtRule, .debtActions:
+            // The rule section and the Pay / Clear actions live
+            // in the expanded Debt card.
+            appState.expandedCard = .debt
         case .openRow:
             if let first = transactionsViewModel?.shownTransactions.first {
                 transactionsViewModel?.expandedTransactionId = first.id
@@ -678,9 +995,10 @@ public struct TourOverlayView: View {
 
     /// Build 64 (F-9): back one step. Steps over skippable steps
     /// (`isSkippable` — the open-row step with no transactions,
-    /// the Tzedaka-actions step for members) — `goToStep` would
-    /// skip forward past them again, landing back where we
-    /// started. No-op on the first step (no Back button there).
+    /// the admin-only steps for members, the Needs Review step
+    /// with nothing to review) — `goToStep` would skip forward
+    /// past them again, landing back where we started. No-op on
+    /// the first step (no Back button there).
     private func back() {
         var target = tour.stepIndex - 1
         while target >= 0 {
@@ -705,6 +1023,13 @@ public struct TourOverlayView: View {
     private func finish() {
         appState.markTourSeen()
         transactionsViewModel?.expandedTransactionId = nil
+        // Sheets (Nov 26, 2026): close any open tour sheet and
+        // the Settings cover BEFORE ending the tour, so the
+        // presenting views' tourSheet/showSettings observers
+        // close them while the tour is still active (their
+        // sync guards on `tour.isActive`).
+        appState.tourSheet = nil
+        appState.showSettings = false
         tour.end()
         if appState.selectedTab != .home {
             appState.selectedTab = .home
@@ -746,5 +1071,16 @@ private struct TourCardHeightKey: PreferenceKey {
 @MainActor
 public func scrollTourAnchorIntoView(_ proxy: ScrollViewProxy, tour: TourState, tab: AppTab) {
     guard tour.isActive, tour.currentStep.tab == tab, let anchor = tour.currentStep.anchor else { return }
+    withAnimation(.none) { proxy.scrollTo(anchor, anchor: .center) }
+}
+
+/// The sheet version of the helper above (Nov 26, 2026): the
+/// Settings steps have no tab (`TourStep.tab` is nil — Settings
+/// presents over the current tab), so the scroll gate is the
+/// step's sheet instead. Used by the Settings subpage scaffold
+/// for the Connections steps.
+@MainActor
+public func scrollTourSheetAnchorIntoView(_ proxy: ScrollViewProxy, tour: TourState, sheet: TourSheet) {
+    guard tour.isActive, tour.currentStep.sheet == sheet, let anchor = tour.currentStep.anchor else { return }
     withAnimation(.none) { proxy.scrollTo(anchor, anchor: .center) }
 }

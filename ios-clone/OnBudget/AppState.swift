@@ -112,6 +112,17 @@ public final class AppViewModel: ObservableObject {
     /// shell; the trigger lives on Home; the replay row lives in
     /// Settings.
     @Published public var tour = TourState()
+    /// Which sheet the tour is currently walking through
+    /// (Nov 26, 2026 — the tour walks THROUGH sheets, not just
+    /// at their entry buttons): the overlay's `goToStep` sets
+    /// this from `TourStep.sheet` on every step change, and the
+    /// presenting views observe it — Home opens/closes the
+    /// Weekly sheet, Funds the Calculator, Transactions the Add
+    /// cover — only while the tour is active, so manual sheet
+    /// use is never fought. Nil for shell steps. The
+    /// `pendingSheetShowTransactions` flag below is the
+    /// precedent for AppState driving post-sheet navigation.
+    @Published public var tourSheet: TourSheet? = nil
     /// Forwards the nested `TourState`'s `isActive` changes to this
     /// object's observers (build 74, Nov 24, 2026 — the Skip fix,
     /// root cause): `AppShellView` observes `AppViewModel`, not the

@@ -34,6 +34,13 @@ public struct AddTransactionView: View {
 
     @Bindable var viewModel: TransactionsViewModel
     let onDismiss: () -> Void
+    /// The shared app state (Nov 26, 2026 — the tour walks
+    /// THROUGH the Add cover): the in-cover overlay below and
+    /// the option anchors read `appState.tour` from it. Nil
+    /// keeps the old behaviour when the cover is opened from
+    /// anywhere that does not pass it (today only
+    /// TransactionsView presents this cover, and it passes it).
+    let appState: AppViewModel?
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     @State private var step: Step = .options
@@ -57,8 +64,9 @@ public struct AddTransactionView: View {
     /// must read the household's real rate, not the assumed 10%).
     @State private var didLoadFunds = false
 
-    public init(viewModel: TransactionsViewModel, onDismiss: @escaping () -> Void) {
+    public init(viewModel: TransactionsViewModel, appState: AppViewModel? = nil, onDismiss: @escaping () -> Void) {
         self.viewModel = viewModel
+        self.appState = appState
         self.onDismiss = onDismiss
         let fundsContext = FundsContext(
             client: viewModel.client,
@@ -123,6 +131,22 @@ public struct AddTransactionView: View {
         // stretched the middle empty against the tall form sheet
         // (most visible on the two-button options screen).
         .frame(width: horizontalSizeClass == .regular ? 600 : nil)
+        // The walkthrough inside the Add cover (Nov 26, 2026):
+        // the cover's own "tourSpace" (the shell overlay sits
+        // behind the cover, invisible), gated on the current
+        // step belonging to the Add cover. Attached to the root
+        // VStack, so the overlay measures the cover itself.
+        .coordinateSpace(name: "tourSpace")
+        .overlay {
+            if let appState, appState.tour.isActive, appState.tour.currentStep.sheet == .add {
+                // The real transactions view model, not nil: the
+                // overlay's Next from the last Add step evaluates
+                // the open-row step, and with nil it would read
+                // "no transactions" and wrongly skip it when rows
+                // exist (see isSkippable).
+                TourOverlayView(tour: appState.tour, appState: appState, transactionsViewModel: viewModel)
+            }
+        }
     }
 
     private var optionsContent: some View {
@@ -136,6 +160,11 @@ public struct AddTransactionView: View {
                 )
             }
             .buttonStyle(PrimaryButtonStyle())
+            // Walkthrough anchor (Nov 26, 2026): the Purchase
+            // option. The options fit without scrolling, so no
+            // scroll-to is needed.
+            .tourAnchor(.addPurchase, tour: appState?.tour)
+            .id(TourAnchor.addPurchase)
 
             if viewModel.isAdmin {
                 Button {
@@ -146,6 +175,11 @@ public struct AddTransactionView: View {
                         subtitle: "Record a donation by hand"
                     )
                 }
+                // Walkthrough anchor (Nov 26, 2026): the Donation
+                // option — admin-only, so the step is skipped for
+                // members (see isSkippable).
+                .tourAnchor(.addDonation, tour: appState?.tour)
+                .id(TourAnchor.addDonation)
                 // Grey tertiary, not pale (audit SH-P2-2, Nov 12
                 // 2026; B3, Nov 23, 2026): the pale middle tier is
                 // retired for three-button groups, and pale blue
@@ -174,6 +208,10 @@ public struct AddTransactionView: View {
                 // well, so the outline is ink — clearly distinct
                 // from both under the strengthened button rule.
                 .buttonStyle(InkOutlineButtonStyle())
+                // Walkthrough anchor (Nov 26, 2026): the Record
+                // Income option — admin-only, like Donation.
+                .tourAnchor(.addIncome, tour: appState?.tour)
+                .id(TourAnchor.addIncome)
             }
             // Build 43 (owner, Nov 17, 2026 — item 18): the
             // trailing Spacer top-anchors the options in the
