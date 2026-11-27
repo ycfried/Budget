@@ -1213,11 +1213,18 @@ final class OnBudgetUITests: XCTestCase {
             taps += 1
             videoMark("TOUR-STEP-\(taps)")
             tapCoordinate(app.buttons["Next"])
+            // TEMPORARY DIAGNOSTIC (Nov 27, 2026 — steps 22/35 no
+            // cutout): read what the overlay received for the step
+            // just entered, right after the tap (early) and again
+            // after its dwell (late/settled) — see logTourDiag.
+            // REMOVE after the diagnostic run.
+            logTourDiag(expectStep: taps + 1, phase: "early")
             if taps < tourVideoDwell.count {
                 Thread.sleep(forTimeInterval: tourVideoDwell[taps])
             } else {
                 Thread.sleep(forTimeInterval: 2.5)
             }
+            logTourDiag(expectStep: taps + 1, phase: "late")
         }
         // The tour is over when its tooltip (Next/Done) is gone.
         XCTAssertFalse(app.buttons["Next"].exists, "Tour tooltip still showing after \(taps) Next taps")
@@ -1230,6 +1237,26 @@ final class OnBudgetUITests: XCTestCase {
     /// test log (stdout) as `VIDEO-MARK <name> <epoch seconds>`.
     private func videoMark(_ name: String) {
         print("VIDEO-MARK \(name) \(Date().timeIntervalSince1970)")
+    }
+
+    /// TEMPORARY DIAGNOSTIC (Nov 27, 2026 — steps 22/35 no cutout):
+    /// reads the overlay's hidden `tour.debug.anchors` element
+    /// (see TourOverlayView) and prints what the overlay received
+    /// for the step just entered to the test log as TOUR-DIAG.
+    /// `expectStep` is the step the tap should have landed on; the
+    /// label itself carries the overlay's own step=, so a read
+    /// taken mid-transition (overlay still on the previous step)
+    /// shows up as a mismatch instead of a wrong verdict. The
+    /// element is absent when no overlay is rendering — that itself
+    /// is signal (the step's overlay never appeared). REMOVE after
+    /// the diagnostic run.
+    private func logTourDiag(expectStep: Int, phase: String) {
+        let diag = app.staticTexts["tour.debug.anchors"]
+        if diag.exists {
+            print("TOUR-DIAG expectStep=\(expectStep) phase=\(phase) \(diag.label)")
+        } else {
+            print("TOUR-DIAG expectStep=\(expectStep) phase=\(phase) ELEMENT-MISSING")
+        }
     }
 
     /// Build 46 (owner, Nov 18, 2026 — "you can't delete it once it
