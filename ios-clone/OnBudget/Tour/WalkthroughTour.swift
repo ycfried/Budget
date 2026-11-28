@@ -533,8 +533,13 @@ public enum TourSheet: Equatable {
 /// (GeometryReader + TourAnchorFrameKey, the v2 mechanism) and the
 /// overlay reads them from `frames` when the anchor is absent. The
 /// step-change scroll-to re-scrolls 0.4s after the step change, and
-/// scrolling re-fires the frame preference, so a stale first
-/// measurement corrects itself inside the step's dwell.
+/// scrolling re-fires the frame preference — but a frame captured
+/// while the card / data is still settling does NOT correct itself
+/// inside the step's dwell (run 46095315065: step 22's stored frame
+/// stayed ~11pt short at the bottom for the whole dwell), so
+/// `setFrame` pads every stored frame's bottom by 12pt (Nov 28,
+/// 2026 — frame capture fix) to guarantee the cutout contains the
+/// target's last text row.
 @MainActor
 public final class TourState: ObservableObject {
     @Published public var isActive = false
@@ -568,8 +573,35 @@ public final class TourState: ObservableObject {
     public func setFrame(_ anchor: TourAnchor, _ frame: CGRect) {
         // Ignore degenerate frames (a view reporting before layout).
         guard frame.width > 0, frame.height > 0 else { return }
-        if frames[anchor] != frame {
-            frames[anchor] = frame
+        // Nov 28, 2026 (tour highlight — frame capture fix): the
+        // stored frame's bottom is padded by 12pt. The value-based
+        // fallback frames are captured while the card / data above
+        // the anchor is still settling (the Funds tab is on
+        // skeletons at step 21 and the Charity / Debt card expands
+        // exactly on the step change), and the step-change
+        // scroll-to's re-fire does not deliver a corrected frame
+        // inside the step's dwell — so the stored frame can land
+        // ~11pt short of the target's last text row at the bottom
+        // (run 46095315065, step 22: the cutout ended 33px / ~11pt
+        // above the "Default Charity Rate / 10%" row's true bottom
+        // and sliced the glyph tops; step 35 sat ~4px short the
+        // same way). The cutout's own 10pt air does not cover a
+        // short FRAME — it only pads a correct one — so the pad
+        // lives here, on the stored frame, where all three fallback
+        // anchors report through the same call. 12pt covers the
+        // measured shortfall with room to spare and reproduces the
+        // v3 geometry (footnote + rate row inside the cutout),
+        // which passed. The tooltip sits 24pt below the padded
+        // maxY, so the pad only moves it further clear. Top and
+        // sides are untouched — only the bottom grows.
+        let padded = CGRect(
+            x: frame.origin.x,
+            y: frame.origin.y,
+            width: frame.width,
+            height: frame.height + 12
+        )
+        if frames[anchor] != padded {
+            frames[anchor] = padded
         }
     }
 
@@ -661,10 +693,11 @@ struct TourAnchorKey: PreferenceKey {
 /// the tour state (tourFrameCollector). A preference is
 /// re-collected on every layout pass — and the step-change
 /// scroll-to re-scrolls 0.4s after the step change, and scrolling
-/// re-fires the preference — so a frame that moves after its first
-/// measurement corrects itself inside the step's dwell, where the
-/// v2 video's staleness (no settle re-scroll then) left it up to
-/// ~85pt off. Every other anchor stays on the anchor-based path
+/// re-fires the preference — but a frame captured while the card /
+/// data is still settling does not correct itself inside the step's
+/// dwell (run 46095315065), so `setFrame` pads every stored
+/// frame's bottom by 12pt (Nov 28, 2026 — frame capture fix).
+/// Every other anchor stays on the anchor-based path
 /// above; only these three use this one.
 private struct TourAnchorFrameKey: PreferenceKey {
     static var defaultValue: [TourAnchor: CGRect] = [:]
@@ -981,10 +1014,12 @@ public struct TourOverlayView: View {
     /// overlay's anchor dict — the three anchors anchorPreference
     /// never delivers (.charityRules, .debtRule, .firstRow) — the
     /// stored value-based frame is used instead (see
-    /// TourAnchorFrameKey). The step-change scroll-to re-scrolls
-    /// 0.4s after the step change, and scrolling re-fires the frame
-    /// preference, so a stale first measurement corrects itself
-    /// inside the step's dwell. Build 65: the Funds-tab step used to
+    /// TourAnchorFrameKey). The stored frame's bottom is padded by
+    /// 12pt in `setFrame` (frame capture fix) because a frame
+    /// captured while the card / data is still settling can land
+    /// ~11pt short of the target's last text row and does not
+    /// correct itself inside the step's dwell (run 46095315065).
+    /// Build 65: the Funds-tab step used to
     /// compute the bottom tab bar's Funds item from the container
     /// geometry — that branch is gone with the tab bar; the step now
     /// points at the shell's PageSelectControl via the `.pageSelect`
