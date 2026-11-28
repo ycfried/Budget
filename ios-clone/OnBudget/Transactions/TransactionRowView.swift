@@ -60,6 +60,17 @@ public struct TransactionRowView: View {
     let isPendingDuplicate: Bool
     let onToggle: () -> Void
     let onActions: () -> Void
+    /// The walkthrough state, when this row carries a tour anchor
+    /// (Nov 27, 2026 — highlight fix): the anchor lives on the
+    /// header Button INSIDE this row, mirroring .calculatorButton
+    /// — an anchorPreference on the row view itself (at the call
+    /// site, in the ForEach) never reaches the shell overlay
+    /// (step 16 absent in the Nov 27 diagnostic, run
+    /// 46082844316). Nil everywhere else.
+    let tour: TourState?
+    /// True when this is the list's first row — the tour's openRow
+    /// step points here.
+    let isFirstRow: Bool
 
     public init(
         transaction: Transaction,
@@ -70,7 +81,9 @@ public struct TransactionRowView: View {
         isRefunded: Bool = false,
         isPendingDuplicate: Bool = false,
         onToggle: @escaping () -> Void,
-        onActions: @escaping () -> Void
+        onActions: @escaping () -> Void,
+        tour: TourState? = nil,
+        isFirstRow: Bool = false
     ) {
         self.transaction = transaction
         self.institutionName = institutionName
@@ -81,6 +94,8 @@ public struct TransactionRowView: View {
         self.isPendingDuplicate = isPendingDuplicate
         self.onToggle = onToggle
         self.onActions = onActions
+        self.tour = tour
+        self.isFirstRow = isFirstRow
     }
 
     /// The row's amount under the one shared kind rule
@@ -269,6 +284,12 @@ public struct TransactionRowView: View {
                 "\(TransactionFormatting.rowTitle(for: transaction)) \(amount.text) \(TransactionFormatting.displayDay(transaction.date)) \(isRefunded ? "Refunded" : TransactionFormatting.stateWord(for: transaction)) — show detail"
             )
             .accessibilityIdentifier("transaction.row")
+            // Walkthrough anchor (Nov 27, 2026 — highlight fix):
+            // the header Button — the leaf inside this row,
+            // mirroring .calculatorButton. The anchor lives here,
+            // not on the row view at the call site (see `tour`).
+            .tourAnchor(isFirstRow ? .firstRow : nil, tour: tour)
+            .id(isFirstRow ? TourAnchor.firstRow : nil)
 
             if isExpanded {
                 TransactionDetailView(

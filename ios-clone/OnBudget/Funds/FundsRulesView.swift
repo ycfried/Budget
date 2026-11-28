@@ -78,11 +78,22 @@ public struct CharityRateSection: View {
     /// 2026 — item 16): the "Default <fund> Rate" label and the
     /// How It Works copy read the fund's CURRENT display name.
     public let fundNames: [String: String]
+    /// The walkthrough state, when this section carries a tour
+    /// anchor (Nov 27, 2026 — highlight fix): the anchor lives on
+    /// a leaf INSIDE this section (the Apply button for admins,
+    /// the ⓘ for members), mirroring .calculatorButton in
+    /// SpendingAllowanceSection — an anchorPreference on the
+    /// section itself, or on a VStack wrapping it at the call
+    /// site, never reaches the shell overlay (step 22 absent in
+    /// the Nov 27 diagnostic, run 46082844316). Nil everywhere
+    /// else — the anchor is a no-op without a tour.
+    public let tour: TourState?
 
-    public init(viewModel: FundsViewModel, bare: Bool = false, fundNames: [String: String] = [:]) {
+    public init(viewModel: FundsViewModel, bare: Bool = false, fundNames: [String: String] = [:], tour: TourState? = nil) {
         self.viewModel = viewModel
         self.bare = bare
         self.fundNames = fundNames
+        self.tour = tour
     }
 
     private var charityName: String { FundSectionID.charity.displayName(customNames: fundNames) }
@@ -164,6 +175,14 @@ public struct CharityRateSection: View {
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel("How it works")
+                    // Walkthrough anchor (Nov 27, 2026 — highlight
+                    // fix): the rate row's ⓘ — the leaf inside this
+                    // section for members, mirroring
+                    // .calculatorButton. The anchor lives here, not
+                    // on the section or a wrapper at the call site
+                    // (see `tour`).
+                    .tourAnchor(.charityRules, tour: tour)
+                    .id(TourAnchor.charityRules)
                 }
                 FundsMuted("Only the admin can change the default rate.")
             }
@@ -246,6 +265,13 @@ public struct CharityRateSection: View {
                     saveRate()
                 }
                 .frame(minHeight: 52)
+                // Walkthrough anchor (Nov 27, 2026 — highlight
+                // fix): the Apply button — the leaf inside this
+                // section for admins, mirroring .calculatorButton.
+                // The anchor lives here, not on the section or a
+                // wrapper at the call site (see `tour`).
+                .tourAnchor(.charityRules, tour: tour)
+                .id(TourAnchor.charityRules)
             }
             if let pending = pendingRateBp {
                 FundsMuted("New incomes will commit \(MoneyFormat.formatRateBp(pending))% — future incomes only. Past incomes stay as they are.")
@@ -370,11 +396,23 @@ public struct DebtRuleSection: View {
     /// 2026 — item 16): the "<debt> Repayment Rule" label reads
     /// the debt fund's CURRENT display name.
     public let fundNames: [String: String]
+    /// The walkthrough state, when this section carries a tour
+    /// anchor (Nov 27, 2026 — highlight fix): the anchor lives on
+    /// a leaf INSIDE this section (the Apply button for admins,
+    /// the admin-only note for members), mirroring
+    /// .calculatorButton in SpendingAllowanceSection — an
+    /// anchorPreference on the section itself, or on a VStack
+    /// wrapping it at the call site, never reaches the shell
+    /// overlay (step 35 absent in the Nov 27 diagnostic, run
+    /// 46082844316). Nil everywhere else — the anchor is a no-op
+    /// without a tour.
+    public let tour: TourState?
 
-    public init(viewModel: FundsViewModel, bare: Bool = false, fundNames: [String: String] = [:]) {
+    public init(viewModel: FundsViewModel, bare: Bool = false, fundNames: [String: String] = [:], tour: TourState? = nil) {
         self.viewModel = viewModel
         self.bare = bare
         self.fundNames = fundNames
+        self.tour = tour
     }
 
     private var debtName: String { FundSectionID.debt.displayName(customNames: fundNames) }
@@ -445,6 +483,13 @@ public struct DebtRuleSection: View {
             } else {
                 FundsBreakdownRow("\(debtName) Repayment Rule", value: ruleText)
                 FundsMuted("Only the admin can change the debt repayment rule.")
+                    // Walkthrough anchor (Nov 27, 2026 — highlight
+                    // fix): the admin-only note — the only leaf in
+                    // the member branch, mirroring .calculatorButton.
+                    // The anchor lives here, not on the section or a
+                    // wrapper at the call site (see `tour`).
+                    .tourAnchor(.debtRule, tour: tour)
+                    .id(TourAnchor.debtRule)
             }
         }
     }
@@ -503,6 +548,13 @@ public struct DebtRuleSection: View {
                     saveRule()
                 }
                 .frame(minHeight: 52)
+                // Walkthrough anchor (Nov 27, 2026 — highlight
+                // fix): the Apply button — the leaf inside this
+                // section for admins, mirroring .calculatorButton.
+                // The anchor lives here, not on the section or a
+                // wrapper at the call site (see `tour`).
+                .tourAnchor(.debtRule, tour: tour)
+                .id(TourAnchor.debtRule)
             }
             // Identifier for a UI test to find the picker+Apply row
             // and prove both sit on the same line at iPhone width.

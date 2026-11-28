@@ -978,16 +978,19 @@ public struct TransactionsView: View {
                                     viewModel.expandedTransactionId = transaction.id
                                 }
                             },
-                            onActions: { actionsTransaction = transaction }
+                            onActions: { actionsTransaction = transaction },
+                            // Walkthrough anchor (build 48): the first
+                            // row — the tour points at it and expands it
+                            // for the "open a row" step. Nov 27, 2026
+                            // (tour highlight fix): the anchor lives on
+                            // the header Button INSIDE TransactionRowView,
+                            // mirroring .calculatorButton — the anchor
+                            // on the row view itself never reached the
+                            // shell overlay (step 16 absent in the Nov 27
+                            // diagnostic, run 46082844316).
+                            tour: appState.tour,
+                            isFirstRow: shown.first?.id == transaction.id
                         )
-                        // Walkthrough anchor (build 48): the first
-                        // row — the tour points at it and expands it
-                        // for the "open a row" step.
-                        .tourAnchor(
-                            shown.first?.id == transaction.id ? .firstRow : nil,
-                            tour: appState.tour
-                        )
-                        .id(shown.first?.id == transaction.id ? TourAnchor.firstRow : nil)
                         if transaction.id != shown.last?.id {
                             Divider()
                                 .padding(.leading, 64)
