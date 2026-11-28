@@ -978,19 +978,25 @@ public struct TransactionsView: View {
                                     viewModel.expandedTransactionId = transaction.id
                                 }
                             },
-                            onActions: { actionsTransaction = transaction },
-                            // Walkthrough anchor (build 48): the first
-                            // row — the tour points at it and expands it
-                            // for the "open a row" step. Nov 27, 2026
-                            // (tour highlight fix): the anchor lives on
-                            // the header Button INSIDE TransactionRowView,
-                            // mirroring .calculatorButton — the anchor
-                            // on the row view itself never reached the
-                            // shell overlay (step 16 absent in the Nov 27
-                            // diagnostic, run 46082844316).
-                            tour: appState.tour,
-                            isFirstRow: shown.first?.id == transaction.id
+                            onActions: { actionsTransaction = transaction }
                         )
+                        // Walkthrough anchor (build 48): the first
+                        // row — the tour points at it and expands it
+                        // for the "open a row" step. Nov 28, 2026
+                        // (tour highlight FALLBACK): this anchor
+                        // reports a VALUE-based frame (GeometryReader
+                        // + TourAnchorFrameKey — the v2 mechanism),
+                        // not an anchorPreference — the shell overlay
+                        // receives nothing for .firstRow through
+                        // TourAnchorKey (diagnostic runs 46082844316
+                        // and 46086053282; the leaf move onto the
+                        // header Button inside the row did not arrive
+                        // either).
+                        .tourFrame(
+                            shown.first?.id == transaction.id ? .firstRow : nil,
+                            tour: appState.tour
+                        )
+                        .id(shown.first?.id == transaction.id ? TourAnchor.firstRow : nil)
                         if transaction.id != shown.last?.id {
                             Divider()
                                 .padding(.leading, 64)

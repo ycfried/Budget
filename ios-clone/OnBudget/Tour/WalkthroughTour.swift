@@ -514,20 +514,38 @@ public enum TourSheet: Equatable {
 /// (UserDefaults), so a new family member on their own device gets
 /// the tour once, and a new household gets it once too.
 ///
-/// Frames are NOT stored here (Nov 27, 2026 — highlight fix, second
-/// attempt): the overlay resolves the current step's anchor
-/// synchronously in its own layout pass (see TourAnchorKey /
-/// TourOverlayView), so a stored frame can never go stale when
-/// content above the anchor grows or a card expands. The first
-/// attempt (Nov 27, 52acdde) stored frames reported by a preference
-/// and re-collected on every layout pass — but the preference only
-/// re-fired on scroll, never on a layout-driven move, so the overlay
-/// kept drawing the frame from the first measurement (loading /
-/// pre-expansion layout), up to ~85pt above the real target.
+/// Frames are NOT stored here for the anchor-based anchors (Nov 27,
+/// 2026 — highlight fix, second attempt): the overlay resolves the
+/// current step's anchor synchronously in its own layout pass (see
+/// TourAnchorKey / TourOverlayView), so a stored frame can never go
+/// stale when content above the anchor grows or a card expands. The
+/// first attempt (Nov 27, 52acdde) stored frames reported by a
+/// preference and re-collected on every layout pass — but the
+/// preference only re-fired on scroll, never on a layout-driven move,
+/// so the overlay kept drawing the frame from the first measurement
+/// (loading / pre-expansion layout), up to ~85pt above the real
+/// target. EXCEPTION (Nov 28, 2026 — fallback): three anchors
+/// (.charityRules, .debtRule, .firstRow) never reach the overlay
+/// through anchorPreference at all — the shell overlay receives
+/// nothing for them (diagnostic runs 46082844316 and 46086053282;
+/// the leaf move onto a Button inside the section did not arrive
+/// either) — so THOSE THREE report value-based frames instead
+/// (GeometryReader + TourAnchorFrameKey, the v2 mechanism) and the
+/// overlay reads them from `frames` when the anchor is absent. The
+/// step-change scroll-to re-scrolls 0.4s after the step change, and
+/// scrolling re-fires the frame preference, so a stale first
+/// measurement corrects itself inside the step's dwell.
 @MainActor
 public final class TourState: ObservableObject {
     @Published public var isActive = false
     @Published public var stepIndex = 0
+    /// Anchor key → frame in the shell's "tourSpace" coordinate
+    /// space — FALLBACK ONLY, for the three anchors anchorPreference
+    /// never delivers (see the class comment). Written by the
+    /// frame collector (tourFrameCollector) and by the reporting
+    /// modifier's onAppear/onChange; read by TourOverlayView when
+    /// the anchor is absent from its anchor dict.
+    @Published public var frames: [TourAnchor: CGRect] = [:]
 
     public var steps: [TourStep] { TourStep.allCases }
 
@@ -545,6 +563,18 @@ public final class TourState: ObservableObject {
     public func end() {
         isActive = false
         stepIndex = 0
+    }
+
+    public func setFrame(_ anchor: TourAnchor, _ frame: CGRect) {
+        // Ignore degenerate frames (a view reporting before layout).
+        guard frame.width > 0, frame.height > 0 else { return }
+        if frames[anchor] != frame {
+            frames[anchor] = frame
+        }
+    }
+
+    public func frame(for anchor: TourAnchor) -> CGRect? {
+        frames[anchor]
     }
 
     /// The walkthrough's "seen" flag (build 50, Nov 20, 2026 —
@@ -619,10 +649,117 @@ struct TourAnchorKey: PreferenceKey {
     }
 }
 
+/// The walkthrough anchors' CURRENT frames, as VALUES (Nov 28,
+/// 2026 — fallback): the v2 mechanism (52acdde), kept ONLY for the
+/// three anchors anchorPreference never delivers (.charityRules,
+/// .debtRule, .firstRow — the shell overlay receives nothing for
+/// them through TourAnchorKey, diagnostic runs 46082844316 and
+/// 46086053282, and the leaf move did not arrive either). Each
+/// fallback anchor reports its frame in its container's
+/// "tourSpace" via a GeometryReader; the values merge (one entry
+/// per anchor) and the shell's frame collector stores them into
+/// the tour state (tourFrameCollector). A preference is
+/// re-collected on every layout pass — and the step-change
+/// scroll-to re-scrolls 0.4s after the step change, and scrolling
+/// re-fires the preference — so a frame that moves after its first
+/// measurement corrects itself inside the step's dwell, where the
+/// v2 video's staleness (no settle re-scroll then) left it up to
+/// ~85pt off. Every other anchor stays on the anchor-based path
+/// above; only these three use this one.
+private struct TourAnchorFrameKey: PreferenceKey {
+    static var defaultValue: [TourAnchor: CGRect] = [:]
+    static func reduce(value: inout [TourAnchor: CGRect], nextValue: () -> [TourAnchor: CGRect]) {
+        value.merge(nextValue()) { _, new in new }
+    }
+}
+
+/// Reports a fallback anchor's frame as a VALUE (Nov 28, 2026 —
+/// fallback, see TourAnchorFrameKey): a GeometryReader in the
+/// background measures the view in its container's "tourSpace"
+/// and reports it through the preference, and also writes it
+/// directly to the tour state on appear and on frame change.
+/// Attached ONLY to the three anchors anchorPreference never
+/// delivers; every other anchor uses TourAnchorModifier.
+public struct TourFrameModifier: ViewModifier {
+    public let anchor: TourAnchor?
+    /// Plain stored reference, NOT @ObservedObject: the modifier
+    /// only WRITES frames (setFrame) and never reads published
+    /// state, and @ObservedObject requires ObservableObject
+    /// conformance, which Optional does not have (compile error,
+    /// Nov 26, 2026 fix-up).
+    public let tour: TourState?
+
+    public init(anchor: TourAnchor?, tour: TourState?) {
+        self.anchor = anchor
+        self.tour = tour
+    }
+
+    public func body(content: Content) -> some View {
+        content.background(
+            GeometryReader { proxy in
+                let frame = proxy.frame(in: .named("tourSpace"))
+                Color.clear
+                    .preference(
+                        key: TourAnchorFrameKey.self,
+                        value: anchor.map { [$0: frame] } ?? [:]
+                    )
+                    .onAppear {
+                        if let anchor, let tour {
+                            tour.setFrame(anchor, frame)
+                        }
+                    }
+                    .onChange(of: frame) { _, new in
+                        if let anchor, let tour {
+                            tour.setFrame(anchor, new)
+                        }
+                    }
+            }
+        )
+    }
+}
+
+/// Collects the fallback anchors' preference frames into the tour
+/// state (Nov 28, 2026 — fallback, see TourAnchorFrameKey):
+/// attached to the shell content (next to its "tourSpace"), so the
+/// shell overlay reads the three fallback frames from there. A
+/// no-op when there is no tour.
+public struct TourFrameCollectorModifier: ViewModifier {
+    public let tour: TourState?
+
+    public init(tour: TourState?) {
+        self.tour = tour
+    }
+
+    public func body(content: Content) -> some View {
+        content.onPreferenceChange(TourAnchorFrameKey.self) { frames in
+            guard let tour else { return }
+            for (anchor, frame) in frames {
+                tour.setFrame(anchor, frame)
+            }
+        }
+    }
+}
+
 public extension View {
     /// Attach a walkthrough anchor to a view (no-op when nil).
     func tourAnchor(_ anchor: TourAnchor?, tour: TourState?) -> some View {
         modifier(TourAnchorModifier(anchor: anchor, tour: tour))
+    }
+
+    /// Attach a FALLBACK walkthrough anchor to a view (no-op when
+    /// nil): value-based frame reporting (see TourAnchorFrameKey).
+    /// Only for the three anchors anchorPreference never delivers
+    /// (.charityRules, .debtRule, .firstRow).
+    func tourFrame(_ anchor: TourAnchor?, tour: TourState?) -> some View {
+        modifier(TourFrameModifier(anchor: anchor, tour: tour))
+    }
+
+    /// Collect the fallback walkthrough anchors' frames (see
+    /// TourAnchorFrameKey) into the tour state. Attach to the
+    /// container that renders the TourOverlayView for those
+    /// anchors, next to its "tourSpace".
+    func tourFrameCollector(tour: TourState?) -> some View {
+        modifier(TourFrameCollectorModifier(tour: tour))
     }
 }
 
@@ -862,23 +999,29 @@ public struct TourOverlayView: View {
 
     /// TEMPORARY DIAGNOSTIC (Nov 27, 2026 — steps 22/35 no cutout):
     /// one line describing what this overlay received for `step`.
-    /// `present=1` + a sane `frame` means the anchor arrived and
-    /// resolved — the cutout should draw that rect, so a missing
-    /// cutout is downstream of the overlay. `present=0` means the
-    /// anchorPreference never reached this overlay (the preference
-    /// is lost somewhere between the anchor modifier and here).
-    /// A present key with a 0-sized / off-screen frame means it
-    /// arrived but resolved degenerate. `keys` lists every anchor
+    /// `present=1` + a sane `frame` means the overlay has a target
+    /// to draw — the cutout should draw that rect, so a missing
+    /// cutout is downstream of the overlay. `present=0` means no
+    /// target at all. `source` says where the target came from:
+    /// `anchor` (anchorPreference, the normal path) or `stored`
+    /// (the value-based fallback frames — the three anchors
+    /// anchorPreference never delivers). `keys` lists every anchor
     /// this overlay currently holds, so a selectively-missing key
     /// (only the in-detail anchors gone, card-level anchors
     /// present) reads differently from an empty collection.
     /// REMOVE after the diagnostic run.
     private func tourDiagString(step: TourStep, target: CGRect?, anchors: [TourAnchor: Anchor<CGRect>]) -> String {
         let anchorName = step.anchor.map { String(describing: $0) } ?? "nil"
-        let present = step.anchor.map { anchors[$0] != nil } ?? false
+        let present = step.anchor.map { target != nil } ?? false
+        let source: String = {
+            guard let anchor = step.anchor else { return "none" }
+            if anchors[anchor] != nil { return "anchor" }
+            if tour.frame(for: anchor) != nil { return "stored" }
+            return "none"
+        }()
         let frame = target.map { String(format: "%.1f,%.1f,%.1f,%.1f", $0.minX, $0.minY, $0.width, $0.height) } ?? "nil"
         let keys = anchors.keys.map { String(describing: $0) }.sorted().joined(separator: ",")
-        return "step=\(tour.stepNumber) stepName=\(step) anchor=\(anchorName) present=\(present ? 1 : 0) frame=\(frame) keys=[\(keys)]"
+        return "step=\(tour.stepNumber) stepName=\(step) anchor=\(anchorName) present=\(present ? 1 : 0) source=\(source) frame=\(frame) keys=[\(keys)]"
     }
 
     /// The current step's target rect: the anchor resolved
@@ -888,13 +1031,24 @@ public struct TourOverlayView: View {
     /// the anchor's CURRENT rect — never a stored frame from the
     /// first measurement. Nil for Close (no target) and while a new
     /// tab is still laying out (the anchor has not reported yet).
-    /// Build 65: the Funds-tab step used to compute the bottom tab
-    /// bar's Funds item from the container geometry — that branch is
-    /// gone with the tab bar; the step now points at the shell's
-    /// PageSelectControl via the `.pageSelect` anchor instead.
+    /// FALLBACK (Nov 28, 2026): when the anchor is absent from the
+    /// overlay's anchor dict — the three anchors anchorPreference
+    /// never delivers (.charityRules, .debtRule, .firstRow) — the
+    /// stored value-based frame is used instead (see
+    /// TourAnchorFrameKey). The step-change scroll-to re-scrolls
+    /// 0.4s after the step change, and scrolling re-fires the frame
+    /// preference, so a stale first measurement corrects itself
+    /// inside the step's dwell. Build 65: the Funds-tab step used to
+    /// compute the bottom tab bar's Funds item from the container
+    /// geometry — that branch is gone with the tab bar; the step now
+    /// points at the shell's PageSelectControl via the `.pageSelect`
+    /// anchor instead.
     private func targetFrame(for step: TourStep, proxy: GeometryProxy) -> CGRect? {
-        guard let anchor = step.anchor, let resolved = anchors[anchor] else { return nil }
-        return proxy[resolved]
+        guard let anchor = step.anchor else { return nil }
+        if let resolved = anchors[anchor] {
+            return proxy[resolved]
+        }
+        return tour.frame(for: anchor)
     }
 
     /// The tooltip card's top edge: below the target when it fits

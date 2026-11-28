@@ -985,17 +985,25 @@ public struct FundsView: View {
                     // and Overspent cards, where the fields already
                     // sit above the buttons.
                     Divider()
+                    VStack(alignment: .leading, spacing: 0) {
+                        CharityRateSection(viewModel: viewModel, bare: true, fundNames: appState.fundNames)
+                    }
                     // Walkthrough anchor (build 48): the rate
                     // editor — "change the rate — set it to 0%
                     // to pause giving" (build 74: no Off switch).
-                    // Nov 27, 2026 (tour highlight fix): the anchor
-                    // lives on a leaf INSIDE CharityRateSection
-                    // (Apply for admins, the ⓘ for members),
-                    // mirroring .calculatorButton — the VStack
-                    // wrapper at this call site never reached the
-                    // shell overlay (step 22 absent in the Nov 27
-                    // diagnostic, run 46082844316).
-                    CharityRateSection(viewModel: viewModel, bare: true, fundNames: appState.fundNames, tour: appState.tour)
+                    // Nov 28, 2026 (tour highlight FALLBACK): this
+                    // anchor reports a VALUE-based frame
+                    // (GeometryReader + TourAnchorFrameKey — the v2
+                    // mechanism), not an anchorPreference — the
+                    // shell overlay receives nothing for
+                    // .charityRules through TourAnchorKey
+                    // (diagnostic runs 46082844316 and 46086053282;
+                    // the leaf move onto a Button inside the
+                    // section did not arrive either). One child +
+                    // spacing 0 sizes exactly to the section, so
+                    // the cutout lands on the same rect.
+                    .tourFrame(.charityRules, tour: appState.tour)
+                    .id(TourAnchor.charityRules)
                     // Build 37 (owner, Nov 16, 2026): the grey
                     // "Close" button is gone — the card already
                     // collapses by tapping its header/chevron, so
@@ -1154,18 +1162,25 @@ public struct FundsView: View {
                     // comes BEFORE the action buttons — Balances
                     // → Rule → Actions → Activity & Transactions.
                     Divider()
+                    VStack(alignment: .leading, spacing: 0) {
+                        DebtRuleSection(viewModel: viewModel, bare: true, fundNames: appState.fundNames)
+                    }
                     // Walkthrough anchor (Nov 26, 2026): the Debt
                     // Repayment Rule — percent / fixed / off. Lives
                     // inside the expanded Debt card (goToStep
-                    // expands it for this step). Nov 27, 2026 (tour
-                    // highlight fix): the anchor lives on a leaf
-                    // INSIDE DebtRuleSection (Apply for admins, the
-                    // admin-only note for members), mirroring
-                    // .calculatorButton — the VStack wrapper at this
-                    // call site never reached the shell overlay
-                    // (step 35 absent in the Nov 27 diagnostic, run
-                    // 46082844316).
-                    DebtRuleSection(viewModel: viewModel, bare: true, fundNames: appState.fundNames, tour: appState.tour)
+                    // expands it for this step). Nov 28, 2026 (tour
+                    // highlight FALLBACK): this anchor reports a
+                    // VALUE-based frame (GeometryReader +
+                    // TourAnchorFrameKey — the v2 mechanism), not an
+                    // anchorPreference — the shell overlay receives
+                    // nothing for .debtRule through TourAnchorKey
+                    // (diagnostic runs 46082844316 and 46086053282;
+                    // the leaf move onto a Button inside the section
+                    // did not arrive either). One child + spacing 0
+                    // sizes exactly to the section, so the cutout
+                    // lands on the same rect.
+                    .tourFrame(.debtRule, tour: appState.tour)
+                    .id(TourAnchor.debtRule)
                     Divider()
                     // Three actions cannot sit side by side on an
                     // iPhone — their labels wrap (owner button

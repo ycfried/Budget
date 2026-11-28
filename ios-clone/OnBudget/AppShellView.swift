@@ -133,11 +133,26 @@ public struct AppShellView: View {
             .animation(nil, value: appState.selectedTab)
             pageSelectRow
         }
+        // The walkthrough's coordinate space (build 48): the three
+        // FALLBACK anchors (.charityRules, .debtRule, .firstRow)
+        // report their frames in "tourSpace" (see tourFrame in
+        // WalkthroughTour.swift), and the overlay below draws in
+        // the same space — anchorPreference never delivers those
+        // three, so they use the value-based path (Nov 28, 2026).
+        .coordinateSpace(name: "tourSpace")
+        // Nov 28, 2026 (tour highlight fallback): collect the
+        // fallback anchors' preference frames into the tour state
+        // (see tourFrameCollector in WalkthroughTour.swift) — the
+        // overlay below reads them from there when the anchor is
+        // absent from its anchor dict.
+        .tourFrameCollector(tour: appState.tour)
         // The walkthrough overlay (Nov 27, 2026 — highlight fix,
         // second attempt): the overlay resolves the current step's
         // anchor in its own layout pass (see TourAnchorKey in
         // WalkthroughTour.swift), so the cutout always draws the
-        // anchor's CURRENT rect — no stored frames, no "tourSpace".
+        // anchor's CURRENT rect — falling back to the stored frame
+        // for the three anchors anchorPreference never delivers
+        // (see targetFrame in TourOverlayView).
         .overlayPreferenceValue(TourAnchorKey.self) { anchors in
             // Tour fix (Nov 27, 2026 — owner: duplicate tooltip +
             // misplaced highlight on sheet steps, e.g. step 15
