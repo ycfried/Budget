@@ -1010,13 +1010,29 @@ public struct TourOverlayView: View {
     /// target where a side fits for every real target, so the
     /// flush branch is a safety net, not a placement. No target →
     /// the bottom of the screen.
+    ///
+    /// Clearance (Nov 28, 2026 — steps 22/35): the gap is 24pt,
+    /// not 16. The white highlight border extends 10pt beyond the
+    /// target, and the value-based fallback frames for
+    /// .charityRules/.debtRule sit ~16pt above the true bottom of
+    /// the last text row (measured in the v3 video, run
+    /// 46091412384: the tooltip at target.maxY + 16 landed exactly
+    /// on the row's descenders — "Default Charity Rate" and "Debt
+    /// Repayment Rule" both sliced), so a 16pt gap from the
+    /// reported maxY left the tooltip covering the row it points
+    /// at. 24pt from the reported maxY clears the border (10) +
+    /// the frame offset (~16) with room to spare. The same
+    /// clearance applies above and below, so the rule holds for
+    /// every step — including the ones that already pass, whose
+    /// tooltip simply sits 8pt lower — and a step that no longer
+    /// fits below flips above instead of crowding its target.
     private func cardTopY(containerSize: CGSize, target: CGRect?, bottomInset: CGFloat) -> CGFloat {
         let topSafe: CGFloat = 8
         let bottomLimit = containerSize.height - bottomInset - 8
         guard let target else {
             return max(topSafe, bottomLimit - cardHeight)
         }
-        let gap: CGFloat = 16
+        let gap: CGFloat = 24
         let belowTop = target.maxY + gap
         if belowTop + cardHeight <= bottomLimit {
             return belowTop
