@@ -875,21 +875,6 @@ public struct TourOverlayView: View {
             let size = proxy.size
             let step = tour.currentStep
             let target = targetFrame(for: step, proxy: proxy)
-            // TEMPORARY DIAGNOSTIC (Nov 27, 2026 — steps 22/35 show
-            // NO cutout at all in the v3/v4 videos, while the
-            // neighbouring steps draw theirs): report what THIS
-            // overlay actually received for the current step — the
-            // expected anchor, whether its key is in `anchors`,
-            // the resolved frame (the exact rect the cutout would
-            // draw), and every key present. The UI test reads the
-            // hidden element below and prints it to the test log
-            // as TOUR-DIAG, so a real recording run shows whether
-            // the preference never arrives (key absent), arrives
-            // but resolves degenerate (frame 0-sized / off-screen),
-            // or arrives fine (and the failure is downstream of
-            // the overlay). REMOVE after the diagnostic run — it
-            // must not ship.
-            let diag = tourDiagString(step: step, target: target, anchors: anchors)
             let cardTop = cardTopY(containerSize: size, target: target, bottomInset: bottomInset(proxy: proxy))
             // The tooltip + arrow ALWAYS render (Nov 27, 2026 —
             // the old `measuredStepIndex` readiness gate hid them
@@ -909,18 +894,6 @@ public struct TourOverlayView: View {
             let cardMinX = size.width / 2 - cardWidth / 2
             let cardMaxX = size.width / 2 + cardWidth / 2
             ZStack(alignment: .topLeading) {
-                // TEMPORARY DIAGNOSTIC (Nov 27, 2026 — see `diag`
-                // above): a 1pt clear text carrying the overlay's
-                // received-anchor report, so the UI test can read
-                // it via accessibility and print it to the test
-                // log. Invisible (1pt, clear) and hit-test-free;
-                // it takes no layout space that matters. REMOVE
-                // after the diagnostic run.
-                Text(diag)
-                    .font(.system(size: 1))
-                    .foregroundStyle(.clear)
-                    .accessibilityIdentifier("tour.debug.anchors")
-                    .allowsHitTesting(false)
                 if let target {
                     TourDimCutout(frame: target, containerSize: size)
                     RoundedRectangle(cornerRadius: 14)
@@ -995,33 +968,6 @@ public struct TourOverlayView: View {
     /// every near-bottom target lost 49pt of room below it).
     private func bottomInset(proxy: GeometryProxy) -> CGFloat {
         proxy.safeAreaInsets.bottom
-    }
-
-    /// TEMPORARY DIAGNOSTIC (Nov 27, 2026 — steps 22/35 no cutout):
-    /// one line describing what this overlay received for `step`.
-    /// `present=1` + a sane `frame` means the overlay has a target
-    /// to draw — the cutout should draw that rect, so a missing
-    /// cutout is downstream of the overlay. `present=0` means no
-    /// target at all. `source` says where the target came from:
-    /// `anchor` (anchorPreference, the normal path) or `stored`
-    /// (the value-based fallback frames — the three anchors
-    /// anchorPreference never delivers). `keys` lists every anchor
-    /// this overlay currently holds, so a selectively-missing key
-    /// (only the in-detail anchors gone, card-level anchors
-    /// present) reads differently from an empty collection.
-    /// REMOVE after the diagnostic run.
-    private func tourDiagString(step: TourStep, target: CGRect?, anchors: [TourAnchor: Anchor<CGRect>]) -> String {
-        let anchorName = step.anchor.map { String(describing: $0) } ?? "nil"
-        let present = step.anchor != nil && target != nil
-        let source: String = {
-            guard let anchor = step.anchor else { return "none" }
-            if anchors[anchor] != nil { return "anchor" }
-            if tour.frame(for: anchor) != nil { return "stored" }
-            return "none"
-        }()
-        let frame = target.map { String(format: "%.1f,%.1f,%.1f,%.1f", $0.minX, $0.minY, $0.width, $0.height) } ?? "nil"
-        let keys = anchors.keys.map { String(describing: $0) }.sorted().joined(separator: ",")
-        return "step=\(tour.stepNumber) stepName=\(step) anchor=\(anchorName) present=\(present ? 1 : 0) source=\(source) frame=\(frame) keys=[\(keys)]"
     }
 
     /// The current step's target rect: the anchor resolved
