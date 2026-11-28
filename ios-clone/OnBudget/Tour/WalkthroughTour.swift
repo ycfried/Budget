@@ -1012,7 +1012,7 @@ public struct TourOverlayView: View {
     /// REMOVE after the diagnostic run.
     private func tourDiagString(step: TourStep, target: CGRect?, anchors: [TourAnchor: Anchor<CGRect>]) -> String {
         let anchorName = step.anchor.map { String(describing: $0) } ?? "nil"
-        let present = step.anchor.map { target != nil } ?? false
+        let present = step.anchor != nil && target != nil
         let source: String = {
             guard let anchor = step.anchor else { return "none" }
             if anchors[anchor] != nil { return "anchor" }
