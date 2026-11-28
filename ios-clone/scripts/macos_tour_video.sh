@@ -171,3 +171,4 @@ exit "$onbudget_test_status"
 # Re-record Nov 27, 2026 — highlight-box fix, second attempt (aec4519): anchors resolved in the overlay layout pass, Weekly-sheet scroll-to, settle-aware re-scroll.
 # Re-record Nov 27, 2026 — highlight cutouts on steps 22/35 (c815135): charityRules/debtRule anchors moved onto a VStack — the Group-rooted sections never reported an anchor.
 # Diagnostic run Nov 27, 2026 — tour-anchor diagnostic (d5491ce): TOUR-DIAG lines report what the shell overlay receives at steps 22/35 vs working anchors; no fix, diagnostic only.
+# Diagnostic run Nov 27, 2026 — leaf-anchor fix verification (a1d38f2): TOUR-DIAG lines confirm whether .charityRules/.debtRule/.firstRow now reach the shell overlay (present=1) vs the Nov 27 diagnostic; diagnostic re-added (b9b9bbf).
